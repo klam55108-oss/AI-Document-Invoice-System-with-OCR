@@ -1,4 +1,4 @@
-# AgenticAP: Complexity Collapse E-Invoicing
+# AI E-Invoicing: Complexity Collapse E-Invoicing
 
 An **AI-native financial automation platform** dedicated to processing heterogeneous invoice formats (PDF, Excel, Images) into structured, accurate data. We utilize an innovative **Agentic AI** approach to achieve **"Zero-Template" extraction**, overcoming the "Format Chaos" and high costs associated with legacy OCR and cloud APIs.
 
