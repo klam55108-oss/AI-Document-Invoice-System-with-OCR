@@ -97,14 +97,9 @@ def display_invoice_list(status_filter: str):
     import asyncio
 
     try:
-        # Create a new event loop for this request (Streamlit runs in sync context)
+        # Use asyncio.run() which properly manages event loop lifecycle
         # This ensures clean state for each request
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            invoices = loop.run_until_complete(get_invoice_list(status_enum))
-        finally:
-            loop.close()
+        invoices = asyncio.run(get_invoice_list(status_enum))
     except Exception as e:
         st.error(f"Error loading invoices: {str(e)}")
         logger.error("Failed to load invoices", error=str(e), exc_info=True)
@@ -166,14 +161,9 @@ def display_invoice_detail():
         import asyncio
 
         try:
-            # Create a new event loop for this request (Streamlit runs in sync context)
+            # Use asyncio.run() which properly manages event loop lifecycle
             # This ensures clean state for each request
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                invoice_detail = loop.run_until_complete(get_invoice_detail(invoice_uuid))
-            finally:
-                loop.close()
+            invoice_detail = asyncio.run(get_invoice_detail(invoice_uuid))
         except Exception as e:
             st.error(f"Error loading invoice: {str(e)}")
             logger.error("Failed to load invoice detail", error=str(e), exc_info=True)

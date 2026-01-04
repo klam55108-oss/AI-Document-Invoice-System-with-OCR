@@ -185,3 +185,5 @@ specs/*/temp/
 /imgs/
 .github/
 .obsidian/
+.cursor/
+.specify/
