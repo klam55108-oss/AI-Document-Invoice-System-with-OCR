@@ -1,0 +1,2 @@
+"""Streamlit dashboard module."""
+

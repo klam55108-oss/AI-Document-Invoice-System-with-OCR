@@ -1,0 +1,518 @@
+openapi: 3.1.0
+info:
+  title: E-Invoice Processing API
+  version: 1.0.0
+  description: |
+    API for processing and querying invoice documents.
+    Returns structured JSON responses with envelope format.
+  contact:
+    name: AI E-Invoicing Team
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns API health status
+      operationId: healthCheck
+      tags:
+        - System
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/invoices:
+    get:
+      summary: List processed invoices
+      description: |
+        Retrieve a paginated list of processed invoices.
+        Supports filtering by status and date range.
+      operationId: listInvoices
+      tags:
+        - Invoices
+      parameters:
+        - name: status
+          in: query
+          description: Filter by processing status
+          required: false
+          schema:
+            type: string
+            enum: [pending, queued, processing, completed, failed]
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort_by
+          in: query
+          description: Sort field
+          required: false
+          schema:
+            type: string
+            enum: [created_at, processed_at, file_name]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceListResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Process invoice file
+      description: |
+        Trigger processing of an invoice file from the data directory.
+        Returns job information for tracking processing status.
+      operationId: processInvoice
+      tags:
+        - Invoices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessInvoiceRequest'
+      responses:
+        '202':
+          description: Processing job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInvoiceResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/{invoice_id}:
+    get:
+      summary: Get invoice details
+      description: Retrieve detailed information about a processed invoice
+      operationId: getInvoice
+      tags:
+        - Invoices
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: Invoice UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceDetailResponse'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-12-19T10:30:00Z"
+        version:
+          type: string
+          example: "1.0.0"
+
+    InvoiceListResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - data
+        - pagination
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-12-19T10:30:00Z"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    InvoiceDetailResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-12-19T10:30:00Z"
+        data:
+          $ref: '#/components/schemas/InvoiceDetail'
+
+    ProcessInvoiceRequest:
+      type: object
+      required:
+        - file_path
+      properties:
+        file_path:
+          type: string
+          description: Relative path to file in data/ directory
+          example: "invoices/sample_invoice.pdf"
+        force_reprocess:
+          type: boolean
+          description: Force reprocessing even if file hash exists
+          default: false
+
+    ProcessInvoiceResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-12-19T10:30:00Z"
+        data:
+          type: object
+          required:
+            - invoice_id
+            - job_id
+            - status
+          properties:
+            invoice_id:
+              type: string
+              format: uuid
+              example: "123e4567-e89b-12d3-a456-426614174000"
+            job_id:
+              type: string
+              format: uuid
+              example: "123e4567-e89b-12d3-a456-426614174001"
+            status:
+              type: string
+              enum: [pending, queued, processing]
+              example: queued
+
+    InvoiceSummary:
+      type: object
+      required:
+        - id
+        - file_name
+        - processing_status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+          example: "invoice_2024_12.pdf"
+        file_type:
+          type: string
+          example: "pdf"
+        processing_status:
+          type: string
+          enum: [pending, queued, processing, completed, failed]
+        vendor_name:
+          type: string
+          nullable: true
+          example: "Acme Corporation"
+        total_amount:
+          type: number
+          format: float
+          nullable: true
+          example: 1250.50
+        currency:
+          type: string
+          nullable: true
+          example: "USD"
+        created_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    InvoiceDetail:
+      type: object
+      required:
+        - id
+        - file_name
+        - processing_status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        file_path:
+          type: string
+        file_type:
+          type: string
+        file_hash:
+          type: string
+        version:
+          type: integer
+        processing_status:
+          type: string
+          enum: [pending, queued, processing, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        extracted_data:
+          $ref: '#/components/schemas/ExtractedData'
+        validation_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationResult'
+
+    ExtractedData:
+      type: object
+      properties:
+        vendor_name:
+          type: string
+          nullable: true
+        invoice_number:
+          type: string
+          nullable: true
+        invoice_date:
+          type: string
+          format: date
+          nullable: true
+        due_date:
+          type: string
+          format: date
+          nullable: true
+        subtotal:
+          type: number
+          format: float
+          nullable: true
+        tax_amount:
+          type: number
+          format: float
+          nullable: true
+        tax_rate:
+          type: number
+          format: float
+          nullable: true
+        total_amount:
+          type: number
+          format: float
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineItem'
+          nullable: true
+        extraction_confidence:
+          type: number
+          format: float
+          nullable: true
+
+    LineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+          format: float
+        unit_price:
+          type: number
+          format: float
+        amount:
+          type: number
+          format: float
+
+    ValidationResult:
+      type: object
+      required:
+        - rule_name
+        - status
+        - validated_at
+      properties:
+        rule_name:
+          type: string
+          example: "math_check_subtotal_tax"
+        rule_description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [passed, failed, warning]
+        expected_value:
+          type: number
+          format: float
+          nullable: true
+        actual_value:
+          type: number
+          format: float
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        validated_at:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - page_size
+        - total_items
+        - total_pages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+        total_items:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - error
+      properties:
+        status:
+          type: string
+          enum: [error]
+          example: error
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-12-19T10:30:00Z"
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: "INVALID_REQUEST"
+            message:
+              type: string
+              example: "Invalid file path provided"
+            details:
+              type: object
+              additionalProperties: true
+

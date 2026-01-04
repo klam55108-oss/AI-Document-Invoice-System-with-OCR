@@ -48,6 +48,73 @@ graph TD
     I --> J;
 ````
 
-## 🚀 Codes
+## 🚀 Quick Start
 
-Coming soon.
+### Prerequisites
+
+- Python 3.12.2
+- Docker and Docker Compose
+- PostgreSQL (via Docker Compose)
+
+### Installation
+
+1. **Clone the repository and install dependencies:**
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+2. **Configure environment variables:**
+   Create a `.env` file in the project root:
+   ```bash
+   DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:5432/einvoicing
+   ENCRYPTION_KEY=your-generated-encryption-key-here
+   LOG_LEVEL=INFO
+   ```
+
+   Generate encryption key:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+3. **Start PostgreSQL:**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Run database migrations:**
+   ```bash
+   alembic upgrade head
+   ```
+
+5. **Start the services:**
+   ```bash
+   # FastAPI API (port 8000)
+   uvicorn interface.api.main:app --reload
+
+   # Streamlit Dashboard (port 8501)
+   streamlit run interface/dashboard/app.py
+   ```
+
+### Current Implementation Status
+
+**✅ Completed (Scaffold Phase):**
+- Project structure with three-layer architecture (Sensory, Brain, Interaction)
+- PostgreSQL database with pgvector extension
+- Async SQLAlchemy 2.0 ORM models
+- File processing pipeline (PDF, Excel, CSV, Images)
+- Basic data extraction and validation framework
+- FastAPI REST API with async endpoints
+- Streamlit review dashboard
+- File-level encryption at rest
+- SHA-256 file hashing for duplicate detection
+- Database migrations with Alembic
+
+**🚧 In Progress / Planned:**
+- Docling integration for advanced PDF processing
+- OCR integration (DeepSeek-OCR/PaddleOCR) for image processing
+- LlamaIndex RAG integration for agentic extraction
+- pgqueuer extension setup for job queue management
+- Enhanced validation rules and self-correcting intelligence
+
+For detailed implementation documentation, see [docs/implementation-scaffold.md](./docs/implementation-scaffold.md).
+
