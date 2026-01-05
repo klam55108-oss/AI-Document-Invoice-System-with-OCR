@@ -11,6 +11,7 @@ from brain.extractor import extract_invoice_data
 from brain.schemas import ExtractedDataSchema
 from brain.validator import get_validation_framework
 from core.database import get_session
+from core.encryption import FileEncryption
 from core.logging import get_logger
 from core.models import ExtractedData, Invoice, ProcessingJob, ProcessingStatus, ValidationResult, ValidationStatus
 from ingestion.excel_processor import process_excel
@@ -53,10 +54,15 @@ async def process_invoice_file(
     file_size = file_path.stat().st_size
     file_type = get_file_type(file_path)
 
-    # Check for existing invoice with same hash
+    # Check for existing invoice with same hash (get the latest version)
     from sqlalchemy import select
 
-    existing_invoice_stmt = select(Invoice).where(Invoice.file_hash == file_hash)
+    existing_invoice_stmt = (
+        select(Invoice)
+        .where(Invoice.file_hash == file_hash)
+        .order_by(Invoice.version.desc())
+        .limit(1)
+    )
     result = await session.execute(existing_invoice_stmt)
     existing_invoice = result.scalar_one_or_none()
 

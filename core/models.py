@@ -1,17 +1,19 @@
 """SQLAlchemy models for invoice processing."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -131,18 +133,16 @@ class ExtractedData(Base):
     )
     vendor_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     invoice_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    invoice_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    subtotal: Mapped[Decimal | None] = mapped_column(
-        String, nullable=True
-    )  # Using String for DECIMAL precision
-    tax_amount: Mapped[Decimal | None] = mapped_column(String, nullable=True)
-    tax_rate: Mapped[Decimal | None] = mapped_column(String, nullable=True)
-    total_amount: Mapped[Decimal | None] = mapped_column(String, nullable=True)
+    invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    subtotal: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    tax_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    tax_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+    total_amount: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True, default="USD")
     line_items: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    extraction_confidence: Mapped[Decimal | None] = mapped_column(String, nullable=True)
+    extraction_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -184,9 +184,9 @@ class ValidationResult(Base):
     rule_name: Mapped[str] = mapped_column(String(100), nullable=False)
     rule_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ValidationStatus] = mapped_column(String(20), nullable=False)
-    expected_value: Mapped[Decimal | None] = mapped_column(String, nullable=True)
-    actual_value: Mapped[Decimal | None] = mapped_column(String, nullable=True)
-    tolerance: Mapped[Decimal | None] = mapped_column(String, nullable=True)
+    expected_value: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    actual_value: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    tolerance: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     validated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

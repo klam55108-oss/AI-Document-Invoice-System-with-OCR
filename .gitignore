@@ -182,8 +182,10 @@ specs/*/temp/
 
 ## William
 #/docs/
-/imgs/
 .github/
+.antigravity/
 .obsidian/
 .cursor/
 .specify/
+/etc/
+/data/

@@ -32,20 +32,31 @@ The infrastructure relies on the **"All-in-Postgres"** model:
 The following Mermaid diagram illustrates the flow of an invoice from ingestion through our Agentic validation layer:
 
 ````mermaid
-graph TD
-    A[Input: PDF, Excel, Image] --> B{Universal Ingestion Funnel};
-    B -->|Excel| C1[Pandas Agent Parsing];
-    B -->|PDF/Image| C2[OCR/Vision Models Docling/PaddleOCR];
-    C1 --> D[Structured Extraction Layer];
-    C2 --> D;
-    D --> E[LlamaIndex: Agentic Extraction & RAG];
-    E --> F{Validation Agent: Check Math/Logic against Pydantic Schema};
-    F -->|Valid| G[STP Success: Store Final Data in Postgres];
-    F -->|Invalid/Need Context| H[Agent Retries/RAG Lookup for Vendor Context];
-    H --> F;
-    F -->|Still Invalid| I[Human-in-the-Loop Review Dashboard Streamlit];
-    G --> J[Output: ERP Integration];
-    I --> J;
+flowchart TD
+    %% Inspired by Vanna.ai and dynamic workflow improvements
+    A[Input: PDF, Excel, Image] --> B{Universal Ingestion Funnel}
+    B -- Excel --> C1[Pandas Agent Parsing]
+    B -- PDF/Image --> C2[OCR/Vision Models<br>Docling &#47;&#32;PaddleOCR]
+    C1 --> D[Structured Extraction Layer]
+    C2 --> D
+    D --> E[LlamaIndex Agentic Extraction & RAG]
+    E --> F{Validation Agent<br>Math&#47;Logic Check}
+    F -- Valid --> G[STP Success:&#10;Store in Postgres]
+    F -- Invalid &#47; Needs Context --> H[Agent Retries or&#10;RAG Vendor Lookup]
+    H --> E
+    F -- Still Invalid --> I[Human-in-the-Loop&#10;Review &#91;Streamlit&#93;]
+    G --> J[ERP&#47;BI Integration]
+    I --> J
+
+    %% Dynamic Feedback/Learning / Vanna-style dash:
+    I -- User Correction --> K[Retrain&#47;Update Agent&#10;Extraction Improves]
+    K --> E
+
+    J -- Ad-hoc Query --> L[Dynamic Dashboard&#10;Vanna.ai-like Q&#38;A]
+    L -- Feedback --> M{Answered&#63;}
+    M -- Yes --> N[Feedback Loop:&#10;Reinforce Success]
+    M -- No --> O[Agent Update&#10;Prompt Tuning]
+    O --> E
 ````
 
 ## 🚀 Quick Start
@@ -116,17 +127,4 @@ graph TD
 - pgqueuer extension setup for job queue management
 - Enhanced validation rules and self-correcting intelligence
 
-For detailed implementation documentation, see [docs/implementation-scaffold.md](./docs/implementation-scaffold.md).
-
-
-#### Accessing the Database Directly
-
-To connect to the PostgreSQL database manually for inspection or debugging, run:
-
-```bash
-psql -h localhost -p 5432 -U rag -d rag
-```
-
-You may be prompted for the password specified in your `.env` file as `POSTGRES_PASSWORD`.
-
-
+For detailed implementation documentation, see [docs/implementation-scaffold.md](./docs/scaffold-1.md).

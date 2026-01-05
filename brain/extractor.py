@@ -58,8 +58,12 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
         # Agentic Flow: Agent retrieves context and then we extract structured data
         agent_query = (
             "Analyze this invoice document provided in Markdown format. "
+            "The invoice may be in any language (English, Chinese, etc.). "
             "Pay special attention to any tables which contain line items, quantities, and prices. "
-            "Identify the vendor, invoice number, date, total amount, and all line items. "
+            "Identify the vendor/seller name (销售方/卖方), invoice number (发票号码), date, "
+            "total amount (价税合计/总计), subtotal (小计), tax amount (税额), and all line items. "
+            "For Chinese invoices, look for fields like: 销售方 (seller), 购买方 (buyer), "
+            "货物或应税劳务名称 (goods/services), 金额 (amount), 税率 (tax rate), 税额 (tax amount). "
             "Provide a comprehensive summary of all found details."
         )
         agent_response = agent.chat(agent_query)
@@ -67,13 +71,24 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
 
         # Create structured output program
         prompt_template_str = (
-            "You are an expert invoice processing agent. Your task is to extract structured information "
-            "from the following context retrieved from an invoice document (which was processed with Docling).\n"
+            "You are an expert invoice processing agent that can handle invoices in multiple languages "
+            "(English, Chinese, etc.). Your task is to extract structured information "
+            "from the following context retrieved from an invoice document.\n"
             "CONTEXT FROM DOCUMENT:\n"
             "---------------------\n"
             "{context_str}\n"
             "---------------------\n"
             "Metadata (may contain raw tables): {metadata}\n"
+            "\n"
+            "IMPORTANT: For Chinese invoices, extract:\n"
+            "- vendor_name from 销售方 (seller) or 销售方名称\n"
+            "- invoice_number from 发票号码\n"
+            "- invoice_date from 开票日期\n"
+            "- total_amount from 价税合计 (total including tax)\n"
+            "- subtotal from 合计 (subtotal) or calculate from line items\n"
+            "- tax_amount from 税额 (tax amount)\n"
+            "- line_items from the goods/services table (货物或应税劳务名称)\n"
+            "Extract all amounts as decimal numbers, regardless of currency or language.\n"
         )
 
         program = LLMTextCompletionProgram.from_defaults(

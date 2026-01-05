@@ -12,14 +12,21 @@ logger = get_logger(__name__)
 _ocr_engine = None
 
 
-def get_ocr_engine():
-    """Lazy initialization of the OCR engine."""
+def get_ocr_engine(lang: str = "ch"):
+    """Lazy initialization of the OCR engine.
+    
+    Args:
+        lang: Language code for OCR. Default "ch" (Chinese) supports both Chinese and English.
+              Use "en" for English-only, "ch" for Chinese (which also handles English).
+    """
     global _ocr_engine
     if _ocr_engine is None:
         try:
             from paddleocr import PaddleOCR
-            logger.info("Initializing PaddleOCR engine")
-            _ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+            logger.info("Initializing PaddleOCR engine", lang=lang)
+            # Use "ch" (Chinese) as default - it supports both Chinese and English text
+            # This is better for international invoices
+            _ocr_engine = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
         except ImportError:
             logger.error("PaddleOCR not installed. Please install paddleocr and paddlepaddle.")
             raise

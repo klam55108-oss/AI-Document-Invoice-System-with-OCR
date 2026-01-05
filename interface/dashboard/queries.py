@@ -89,7 +89,14 @@ async def get_invoice_list(status: ProcessingStatus | None = None) -> list[Invoi
     )
 
     try:
-        query = select(Invoice).order_by(Invoice.created_at.desc())
+        # Join with extracted_data to get summary information
+        from sqlalchemy.orm import selectinload
+        
+        query = (
+            select(Invoice)
+            .options(selectinload(Invoice.extracted_data))
+            .order_by(Invoice.created_at.desc())
+        )
 
         if status:
             query = query.where(Invoice.processing_status == status)
@@ -174,8 +181,9 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
                     "file_path": invoice.file_path,
                     "file_type": invoice.file_type,
                     "file_hash": invoice.file_hash,
+                    "file_size": invoice.file_size,
                     "version": invoice.version,
-                    "processing_status": invoice.processing_status.value,
+                    "processing_status": invoice.processing_status.value if hasattr(invoice.processing_status, 'value') else str(invoice.processing_status),
                     "created_at": invoice.created_at,
                     "updated_at": invoice.updated_at,
                     "processed_at": invoice.processed_at,
@@ -202,7 +210,7 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
                         {
                             "rule_name": vr.rule_name,
                             "rule_description": vr.rule_description,
-                            "status": vr.status.value,
+                            "status": vr.status.value if hasattr(vr.status, 'value') else str(vr.status),
                             "expected_value": float(vr.expected_value) if vr.expected_value else None,
                             "actual_value": float(vr.actual_value) if vr.actual_value else None,
                             "tolerance": float(vr.tolerance) if vr.tolerance else None,
