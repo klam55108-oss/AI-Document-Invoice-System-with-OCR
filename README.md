@@ -31,33 +31,24 @@ The infrastructure relies on the **"All-in-Postgres"** model:
 
 The following Mermaid diagram illustrates the flow of an invoice from ingestion through our Agentic validation layer:
 
-````mermaid
+```mermaid
 flowchart TD
-    %% Inspired by Vanna.ai and dynamic workflow improvements
     A[Input: PDF, Excel, Image] --> B{Universal Ingestion Funnel}
     B -- Excel --> C1[Pandas Agent Parsing]
-    B -- PDF/Image --> C2[OCR/Vision Models<br>Docling &#47;&#32;PaddleOCR]
+    B -- PDF/Image --> C2[Docling / PaddleOCR]
     C1 --> D[Structured Extraction Layer]
     C2 --> D
-    D --> E[LlamaIndex Agentic Extraction & RAG]
-    E --> F{Validation Agent<br>Math&#47;Logic Check}
-    F -- Valid --> G[STP Success:&#10;Store in Postgres]
-    F -- Invalid &#47; Needs Context --> H[Agent Retries or&#10;RAG Vendor Lookup]
+    D --> E[LlamaIndex Extraction & RAG]
+    E --> F{Validation Agent<br>Math/Logic Check}
+    F -- Valid --> G[STP Success:<br>Store in Postgres]
+    F -- Invalid --> H[Agent Retries or<br>Vendor Lookup &#91;RAG&#93;]
     H --> E
-    F -- Still Invalid --> I[Human-in-the-Loop&#10;Review &#91;Streamlit&#93;]
-    G --> J[ERP&#47;BI Integration]
+    F -- Still Invalid --> I[Human-in-the-Loop<br>Review &#91;Streamlit&#93;]
+    G --> J[ERP/BI Integration]
     I --> J
-
-    %% Dynamic Feedback/Learning / Vanna-style dash:
-    I -- User Correction --> K[Retrain&#47;Update Agent&#10;Extraction Improves]
+    I -- User Correction --> K[Retrain/Update Agent<br>Extraction Improves]
     K --> E
-
-    J -- Ad-hoc Query --> L[Dynamic Dashboard&#10;Vanna.ai-like Q&#38;A]
-    L -- Feedback --> M{Answered&#63;}
-    M -- Yes --> N[Feedback Loop:&#10;Reinforce Success]
-    M -- No --> O[Agent Update&#10;Prompt Tuning]
-    O --> E
-````
+```
 
 ## 🚀 Quick Start
 
@@ -106,6 +97,90 @@ flowchart TD
    streamlit run interface/dashboard/app.py
    ```
 
+### Processing Invoices
+
+Once your services are running, you can process invoices in several ways:
+
+#### Option 1: Process All Invoices at Once (Recommended)
+
+Use the provided script to process all invoices:
+
+```bash
+python scripts/process_all_invoices.py
+```
+
+This will process all `invoice-*.png` files in the `data/` directory and show progress for each file.
+
+#### Option 2: Process Individual Invoices via API
+
+Process a single invoice using the API:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/invoices/process" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "invoice-1.png",
+    "force_reprocess": false
+  }'
+```
+
+#### Option 3: Use the Interactive API Docs
+
+1. Open http://localhost:8000/docs in your browser
+2. Find the `POST /api/v1/invoices/process` endpoint
+3. Click "Try it out" and enter the file path
+4. Click "Execute"
+
+### Viewing Results
+
+**Dashboard (Recommended):**
+- Open http://localhost:8501 in your browser
+- **Invoice List Tab**: View all processed invoices with status, vendor, amounts, and metadata
+- **Invoice Detail Tab**: Detailed view with extracted data and validation results
+
+**API Endpoints:**
+- List invoices: `GET http://localhost:8000/api/v1/invoices`
+- Get invoice details: `GET http://localhost:8000/api/v1/invoices/{invoice_id}`
+- Filter by status: `GET http://localhost:8000/api/v1/invoices?status=completed`
+
+**API Documentation:**
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Understanding Processing
+
+Each invoice goes through these stages:
+1. **File Ingestion**: File is read and hashed (SHA-256) for duplicate detection
+2. **OCR/Text Extraction**: Image/PDF is processed to extract text (PaddleOCR for images)
+3. **AI Extraction**: Structured data is extracted using LlamaIndex RAG (vendor, amounts, dates, etc.)
+4. **Validation**: Business rules are checked (math validation, date consistency, etc.)
+5. **Self-Correction**: If validation fails, AI attempts to refine extraction
+6. **Storage**: Results are stored in PostgreSQL
+
+**Processing Status:**
+- `pending` - Initial state
+- `queued` - Added to processing queue
+- `processing` - Currently being processed
+- `completed` - Successfully processed
+- `failed` - Processing failed (check error_message)
+
+### Troubleshooting
+
+**If processing fails:**
+- Check backend logs for error messages
+- Verify the file exists in `data/` directory
+- Check database connection in `.env` file
+- Ensure all dependencies are installed
+
+**If dashboard shows no invoices:**
+- Make sure you've processed at least one invoice
+- Check the status filter in the sidebar
+- Verify database connection
+
+**API not responding:**
+- Check if backend is running: `curl http://localhost:8000/health`
+- Verify port 8000 is not in use by another service
+
 ### Current Implementation Status
 
 **✅ Completed (Scaffold Phase):**
@@ -127,4 +202,9 @@ flowchart TD
 - pgqueuer extension setup for job queue management
 - Enhanced validation rules and self-correcting intelligence
 
-For detailed implementation documentation, see [docs/implementation-scaffold.md](./docs/scaffold-1.md).
+## 📚 Documentation
+
+- **[Setup & Scaffold](./docs/setup-scaffold-1.md)**: Complete implementation documentation
+- **[Invoice Processing](./docs/process-images-3.md)**: Recent improvements and enhancements
+- **[Duplicate Processing Logic](./docs/duplicate-processing-logic.md)**: How file versioning and duplicate detection works
+- **[Multi-Agent Architecture](./docs/multi-agents-2.md)**: Agentic AI implementation details

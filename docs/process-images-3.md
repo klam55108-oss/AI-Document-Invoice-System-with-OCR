@@ -86,12 +86,6 @@ This document summarizes the implementation work for processing invoice images, 
 
 ### 7. Documentation
 
-#### `QUICKSTART.md`
-- Quick start guide for processing invoices
-- Multiple processing methods (script, API, interactive docs)
-- Viewing results instructions
-- Troubleshooting tips
-
 #### `docs/duplicate-processing-logic.md`
 - Detailed explanation of duplicate file handling
 - File hashing and version management
@@ -136,7 +130,6 @@ This document summarizes the implementation work for processing invoice images, 
 - `interface/dashboard/queries.py` - Improved queries
 
 ## Files Created
-- `QUICKSTART.md` - User guide
 - `docs/duplicate-processing-logic.md` - Technical documentation
 - `scripts/process_all_invoices.py` - Batch processing
 - `scripts/cleanup_vectors.py` - Vector cleanup utility
