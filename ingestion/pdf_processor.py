@@ -26,8 +26,9 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
 
     Returns:
         Dictionary with extracted text and metadata:
-        - text: Extracted text content
-        - pages: Number of pages (if available)
+        - text: Extracted text content (Markdown)
+        - pages: Number of pages
+        - tables: List of extracted tables as CSV/Markdown
         - metadata: File metadata
     """
     if not DOCLING_AVAILABLE:
@@ -40,27 +41,40 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
         converter = DocumentConverter()
         result = converter.convert(str(file_path))
 
-        # Extract text from result
-        text_content = ""
-        if hasattr(result, "document"):
-            # Docling result structure
-            if hasattr(result.document, "text"):
-                text_content = result.document.text
-            elif hasattr(result.document, "content"):
-                # Try to extract text from content structure
-                text_content = str(result.document.content)
+        # Extract markdown content for layout preservation
+        text_content = result.document.export_to_markdown()
+
+        # Extract tables as structured data
+        tables = []
+        if hasattr(result.document, "tables"):
+            for table in result.document.tables:
+                try:
+                    # Convert table to markdown for better LLM/parsing context
+                    tables.append(table.export_to_markdown())
+                except Exception:
+                    logger.warning("Failed to export table to markdown")
 
         pages = getattr(result, "pages", None) or 1
+        if not pages and hasattr(result.document, "pages"):
+            pages = len(result.document.pages)
 
-        logger.info("PDF processed", path=str(file_path), pages=pages, text_length=len(text_content))
+        logger.info(
+            "PDF processed with Docling",
+            path=str(file_path),
+            pages=pages,
+            text_length=len(text_content),
+            tables_found=len(tables),
+        )
 
         return {
             "text": text_content,
             "pages": pages,
+            "tables": tables,
             "metadata": {
                 "file_path": str(file_path),
                 "file_size": file_path.stat().st_size,
                 "processor": "docling",
+                "format": "markdown",
             },
         }
 

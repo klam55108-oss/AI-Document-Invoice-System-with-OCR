@@ -114,6 +114,107 @@ class MathCheckSubtotalTaxRule(ValidationRule):
             )
 
 
+        return results
+
+
+class DateConsistencyRule(ValidationRule):
+    """Validates that due_date is on or after invoice_date."""
+
+    def __init__(self):
+        super().__init__(
+            name="date_consistency",
+            description="Validates that due date is not before invoice date",
+        )
+
+    async def validate(self, extracted_data: ExtractedDataSchema) -> ValidationRuleResult:
+        if not extracted_data.invoice_date or not extracted_data.due_date:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="passed",  # Not applicable if missing
+            )
+
+        if extracted_data.due_date < extracted_data.invoice_date:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="failed",
+                error_message=f"Due date ({extracted_data.due_date}) is before invoice date ({extracted_data.invoice_date})",
+            )
+
+        return ValidationRuleResult(
+            rule_name=self.name,
+            rule_description=self.description,
+            status="passed",
+        )
+
+
+class LineItemMathRule(ValidationRule):
+    """Validates that the sum of line item amounts equals the subtotal."""
+
+    def __init__(self, tolerance: Decimal = DEFAULT_TOLERANCE):
+        super().__init__(
+            name="line_item_math",
+            description="Validates that sum of line item amounts equals subtotal",
+        )
+        self.tolerance = tolerance
+
+    async def validate(self, extracted_data: ExtractedDataSchema) -> ValidationRuleResult:
+        if not extracted_data.line_items or extracted_data.subtotal is None:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="warning",
+                error_message="Missing line items or subtotal for validation",
+            )
+
+        sum_amounts = sum((item.amount or Decimal("0")) for item in extracted_data.line_items)
+        difference = abs(sum_amounts - extracted_data.subtotal)
+
+        if difference <= self.tolerance:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="passed",
+                expected_value=extracted_data.subtotal,
+                actual_value=sum_amounts,
+            )
+        else:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="failed",
+                expected_value=extracted_data.subtotal,
+                actual_value=sum_amounts,
+                error_message=f"Sum of line items ({sum_amounts}) does not equal subtotal ({extracted_data.subtotal}). Difference: {difference}",
+            )
+
+
+class VendorSanityRule(ValidationRule):
+    """Basic checks for vendor name."""
+
+    def __init__(self):
+        super().__init__(
+            name="vendor_sanity",
+            description="Validates vendor name existence and basic format",
+        )
+
+    async def validate(self, extracted_data: ExtractedDataSchema) -> ValidationRuleResult:
+        if not extracted_data.vendor_name or len(extracted_data.vendor_name.strip()) < 2:
+            return ValidationRuleResult(
+                rule_name=self.name,
+                rule_description=self.description,
+                status="failed",
+                error_message="Vendor name is missing or too short",
+            )
+
+        return ValidationRuleResult(
+            rule_name=self.name,
+            rule_description=self.description,
+            status="passed",
+        )
+
+
 class ValidationFramework:
     """Framework for running validation rules."""
 
@@ -121,6 +222,9 @@ class ValidationFramework:
         """Initialize validation framework with default rules."""
         self.rules: list[ValidationRule] = [
             MathCheckSubtotalTaxRule(),
+            DateConsistencyRule(),
+            LineItemMathRule(),
+            VendorSanityRule(),
         ]
 
     def add_rule(self, rule: ValidationRule) -> None:

@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import close_db, init_db
 from core.logging import configure_logging, get_logger
+from core.queue import init_queue
+from core.jobs import register_handlers
 from interface.api.routes import health, invoices
 
 logger = get_logger(__name__)
@@ -30,13 +32,26 @@ async def lifespan(app: FastAPI):
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         await init_db(database_url)
-        logger.info("Application started")
+        # Initialize queue
+        queue = await init_queue()
+        await register_handlers()
+        # Start the queue listener in the background
+        import asyncio
+        app.state.queue_task = asyncio.create_task(queue.run())
+        logger.info("Application started and job queue listener running")
     else:
         logger.warning("DATABASE_URL not set, database not initialized")
 
     yield
 
     # Shutdown
+    if hasattr(app.state, "queue_task"):
+        app.state.queue_task.cancel()
+        try:
+            await app.state.queue_task
+        except asyncio.CancelledError:
+            pass
+    
     await close_db()
     logger.info("Application shutdown")
 

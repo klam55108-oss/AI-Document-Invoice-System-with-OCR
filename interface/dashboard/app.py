@@ -65,8 +65,8 @@ def main():
         st.header("Filters")
         status_filter = st.selectbox(
             "Processing Status",
-            ["All", "Pending", "Processing", "Completed", "Failed"],
-            index=2,  # Default to Completed
+            ["All", "Pending", "Queued", "Processing", "Completed", "Failed"],
+            index=0,  # Default to All
         )
 
     # Main content
@@ -87,6 +87,7 @@ def display_invoice_list(status_filter: str):
     status_map = {
         "All": None,
         "Pending": ProcessingStatus.PENDING,
+        "Queued": ProcessingStatus.QUEUED,
         "Processing": ProcessingStatus.PROCESSING,
         "Completed": ProcessingStatus.COMPLETED,
         "Failed": ProcessingStatus.FAILED,
@@ -109,9 +110,39 @@ def display_invoice_list(status_filter: str):
         st.info("No invoices found. Process some invoice files to get started.")
         return
 
-    # Display invoices in a table
-    import pandas as pd
+    # Fetch all invoices for global metrics
+    try:
+        all_invoices = asyncio.run(get_invoice_list(None))
+    except Exception as e:
+        st.error(f"Error loading global metrics: {str(e)}")
+        all_invoices = []
 
+    # Display status summary metrics (Global)
+    if all_invoices:
+        all_invoice_data = [{"Status": inv.processing_status.value} for inv in all_invoices]
+        all_df = pd.DataFrame(all_invoice_data)
+        status_counts = all_df["Status"].value_counts()
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total", len(all_invoices))
+        with col2:
+            completed = status_counts.get("completed", 0)
+            st.metric("Completed", completed)
+        with col3:
+            failed = status_counts.get("failed", 0)
+            st.metric("Failed", failed)
+        with col4:
+            processing = status_counts.get("processing", 0) + status_counts.get("pending", 0) + status_counts.get("queued", 0)
+            st.metric("In Progress", processing)
+
+    st.divider()
+
+    if not invoices:
+        st.info(f"No invoices found with status: {status_filter}")
+        return
+
+    # Display invoices in a table
     invoice_data = []
     for invoice in invoices:
         invoice_data.append({
@@ -124,22 +155,8 @@ def display_invoice_list(status_filter: str):
         })
 
     df = pd.DataFrame(invoice_data)
+    st.write(f"Showing {len(df)} results")
     st.dataframe(df, use_container_width=True, hide_index=True)
-
-    # Status summary
-    status_counts = df["Status"].value_counts()
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total", len(invoices))
-    with col2:
-        completed = status_counts.get("completed", 0)
-        st.metric("Completed", completed)
-    with col3:
-        failed = status_counts.get("failed", 0)
-        st.metric("Failed", failed)
-    with col4:
-        processing = status_counts.get("processing", 0) + status_counts.get("pending", 0)
-        st.metric("In Progress", processing)
 
 
 def display_invoice_detail():

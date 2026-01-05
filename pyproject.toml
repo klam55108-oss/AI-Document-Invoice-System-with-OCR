@@ -33,6 +33,10 @@ dependencies = [
     "structlog>=24.4.0",
     "python-dotenv>=1.0.1",
     "streamlit>=1.39.0",
+    "pgqueuer>=0.11.0",
+    "paddleocr>=2.7.0",
+    "paddlepaddle>=2.6.0",
+    "openai>=1.50.0",
 ]
 
 [project.optional-dependencies]

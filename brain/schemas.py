@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class LineItem(BaseModel):
@@ -43,6 +43,26 @@ class ExtractedDataSchema(BaseModel):
         if len(v) != 3:
             raise ValueError("Currency code must be 3 characters (ISO 4217)")
         return v.upper()
+
+    @model_validator(mode="after")
+    def validate_amounts(self) -> "ExtractedDataSchema":
+        """Validate that subtotal + tax = total_amount."""
+        if self.subtotal is not None and self.tax_amount is not None and self.total_amount is not None:
+            expected_total = self.subtotal + self.tax_amount
+            if abs(expected_total - self.total_amount) > Decimal("0.01"):
+                # We don't raise here to allow the validator.py to capture it as a ValidationRuleResult
+                # but we could log or mark it for self-correction refined logic.
+                pass
+        return self
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> "ExtractedDataSchema":
+        """Validate that due_date is after or equal to invoice_date."""
+        if self.invoice_date and self.due_date:
+            if self.due_date < self.invoice_date:
+                # Same logic: don't raise, just let it be handled by rules framework
+                pass
+        return self
 
     class Config:
         json_schema_extra = {

@@ -1,5 +1,6 @@
 """File processing orchestration and version tracking."""
 
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -152,6 +153,48 @@ async def process_invoice_file(
                 error_message=result.error_message,
             )
             session.add(validation_record)
+
+        # Self-correction intelligence: If critical validations failed, try refining
+        failed_validations = [r for r in validation_results if r.status == "failed"]
+        if failed_validations:
+            logger.info(
+                "Triggering self-correction refinement",
+                invoice_id=str(invoice.id),
+                failed_count=len(failed_validations),
+            )
+            from brain.extractor import refine_extraction
+
+            refined_data = await refine_extraction(raw_text, extracted_data, failed_validations)
+
+            # Update extracted record with refined data
+            extracted_record.vendor_name = refined_data.vendor_name
+            extracted_record.invoice_number = refined_data.invoice_number
+            extracted_record.invoice_date = refined_data.invoice_date
+            extracted_record.due_date = refined_data.due_date
+            extracted_record.subtotal = refined_data.subtotal
+            extracted_record.tax_amount = refined_data.tax_amount
+            extracted_record.tax_rate = refined_data.tax_rate
+            extracted_record.total_amount = refined_data.total_amount
+            extracted_record.line_items = refined_data.line_items
+            extracted_record.extraction_confidence = refined_data.extraction_confidence
+
+            # Re-run validation on refined data to see if it passed
+            validation_results = await validation_framework.validate(refined_data)
+
+            # Store new validation results (overwriting or appending as "refined" - here we append)
+            for result in validation_results:
+                refined_validation_record = ValidationResult(
+                    id=uuid.uuid4(),
+                    invoice_id=invoice.id,
+                    rule_name=f"{result.rule_name}_refined",
+                    rule_description=f"Refined check: {result.rule_description}",
+                    status=ValidationStatus(result.status),
+                    expected_value=result.expected_value,
+                    actual_value=result.actual_value,
+                    tolerance=result.tolerance,
+                    error_message=result.error_message,
+                )
+                session.add(refined_validation_record)
 
         # Update invoice status
         invoice.processing_status = ProcessingStatus.COMPLETED
