@@ -22,6 +22,11 @@ def get_ocr_engine(lang: str = "ch"):
     global _ocr_engine
     if _ocr_engine is None:
         try:
+            import os
+            # Disable model source connectivity check to speed up initialization
+            # This prevents the "Checking connectivity to the model hosters" delay
+            os.environ.setdefault("DISABLE_MODEL_SOURCE_CHECK", "True")
+            
             from paddleocr import PaddleOCR
             logger.info("Initializing PaddleOCR engine", lang=lang)
             # Use "ch" (Chinese) as default - it supports both Chinese and English text

@@ -17,7 +17,7 @@ This branch implements comprehensive enhancements to the Streamlit dashboard, ad
 
 ### Phase 2: Foundational (5/5 tasks) ✅
 - **Path Resolver Utility** (`interface/dashboard/utils/path_resolver.py`)
-  - Resolves file paths in `data/` and `data/encrypted/` directories
+  - Resolves file paths (storage_path) in `data/` and `data/encrypted/` directories
   - Provides helpful error messages when files are missing
   
 - **Data Formatters** (`interface/dashboard/utils/data_formatters.py`)

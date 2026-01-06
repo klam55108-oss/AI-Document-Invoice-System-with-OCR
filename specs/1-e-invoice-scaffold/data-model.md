@@ -41,11 +41,14 @@
 | Field | Type | Constraints | Description |
 |-------|------|------------|-------------|
 | `id` | UUID | PRIMARY KEY, NOT NULL | Unique identifier (database-generated) |
-| `file_path` | VARCHAR(512) | NOT NULL | Original file path in data/ directory |
+| `storage_path` | VARCHAR(512) | NOT NULL | Original file path in data/ directory |
 | `file_name` | VARCHAR(256) | NOT NULL | Original filename |
+| `category` | VARCHAR(100) | NULL, INDEX | Logical category (e.g. Invoice, Receipt) |
+| `group` | VARCHAR(100) | NULL, INDEX | Logical group/source (e.g. grok, jimeng) |
+| `job_id` | UUID | NULL, INDEX | Batch/Job identifier |
 | `file_hash` | VARCHAR(64) | NOT NULL, INDEX | SHA-256 hash of file content |
 | `file_size` | BIGINT | NOT NULL | File size in bytes |
-| `file_type` | VARCHAR(10) | NOT NULL | File extension (pdf, xlsx, csv, jpg, png) |
+| `file_type` | VARCHAR(10) | NOT NULL | File extension (pdf, xlsx, csv, jpg, png, etc.) |
 | `version` | INTEGER | NOT NULL, DEFAULT 1 | Version number (increments on reprocessing) |
 | `processing_status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Status: pending, queued, processing, completed, failed |
 | `encrypted_file_path` | VARCHAR(512) | NULL | Path to encrypted file (if encryption enabled) |
@@ -53,6 +56,7 @@
 | `updated_at` | TIMESTAMP | NOT NULL, DEFAULT NOW() | Last update timestamp |
 | `processed_at` | TIMESTAMP | NULL | Completion timestamp |
 | `error_message` | TEXT | NULL | Error details if processing failed |
+| `upload_metadata` | JSONB | NULL | Metadata about file upload |
 
 **Indexes**:
 - `idx_invoices_file_hash` on `file_hash` (for duplicate detection)
@@ -178,7 +182,7 @@ pending → queued → processing → completed
 | `error_message` | TEXT | NULL | Error details if job failed |
 | `error_traceback` | TEXT | NULL | Full error traceback for debugging |
 | `retry_count` | INTEGER | NOT NULL, DEFAULT 0 | Number of retry attempts (scaffold: no retries) |
-| `metadata` | JSONB | NULL | Additional job metadata (file size, processing time, etc.) |
+| `job_metadata` | JSONB | NULL | Additional job metadata (file size, processing time, etc.) |
 
 **Indexes**:
 - `idx_processing_jobs_invoice_id` on `invoice_id` (foreign key)

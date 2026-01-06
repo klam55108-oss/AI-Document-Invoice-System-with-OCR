@@ -33,20 +33,48 @@ python3 scripts/process_invoices.py --force
 
 ## Maintenance & Cleanup
 
-### [cleanup_invoices.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/cleanup_invoices.py)
-Deletes invoice records, extracted data, and validation results from the database.
+### [reset_all_data.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/reset_all_data.py)
+**Comprehensive script to reset all data: pgvector embeddings, extracted_data, and optionally persistent storage files.**
+
+This is the recommended script for a complete reset. It handles both `cleanup_vectors.py` and `cleanup_invoices.py` in the correct order.
 
 **Usage:**
 ```bash
 # Dry run to see what would be deleted
-python3 scripts/cleanup_invoices.py --dry-run
+python3 scripts/reset_all_data.py --dry-run
 
-# Delete invoices matching a path pattern
-python3 scripts/cleanup_invoices.py --file-path-filter "jimeng/"
+# Reset database only (pgvector + extracted_data)
+python3 scripts/reset_all_data.py
+
+# Reset database + persistent storage files
+python3 scripts/reset_all_data.py --cleanup-files
+
+# Selective cleanup (only vectors, keep extracted_data)
+python3 scripts/reset_all_data.py --no-extracted
+
+# Selective cleanup (only extracted_data, keep vectors)
+python3 scripts/reset_all_data.py --no-vectors
 ```
 
+**What it cleans:**
+- ✅ pgvector embeddings (`invoice_embeddings` table)
+- ✅ Invoice tables (`invoices`, `extracted_data`, `validation_results`, `processing_jobs`)
+- ✅ Optional: Persistent storage files in `data/` directory (with `--cleanup-files`)
+
+---
+
 ### [cleanup_vectors.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/cleanup_vectors.py)
-Cleans up all pgvector-related tables and LlamaIndex data.
+**Cleans up pgvector embeddings and vector-related tables only.**
+
+Deletes:
+- `invoice_embeddings` table (pgvector embeddings)
+- Any tables with `vector` type columns
+- LlamaIndex tables (`data_*`, `vector_store_*`, `llama_*`)
+
+**Does NOT touch:**
+- Invoice tables (`invoices`, `extracted_data`, etc.)
+- Validation results
+- Processing jobs
 
 **Usage:**
 ```bash
@@ -56,6 +84,66 @@ python3 scripts/cleanup_vectors.py --list-only
 # Clear all vector data
 python3 scripts/cleanup_vectors.py
 ```
+
+**When to use:**
+- When you want to reset embeddings but keep invoice data
+- When you need to re-embed all invoices with a new model
+
+---
+
+### [cleanup_invoices.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/cleanup_invoices.py)
+**Cleans up invoice-related relational data only.**
+
+Deletes:
+- `invoices` table
+- `extracted_data` table
+- `validation_results` table
+- `processing_jobs` table
+
+**Does NOT touch:**
+- pgvector/embeddings tables
+- Vector data
+
+**Usage:**
+```bash
+# Dry run to see what would be deleted
+python3 scripts/cleanup_invoices.py --dry-run
+
+# Delete all invoice data
+python3 scripts/cleanup_invoices.py
+
+# Delete invoices matching a storage path pattern
+python3 scripts/cleanup_invoices.py --file-path-filter "jimeng/"
+```
+
+**When to use:**
+- When you want to reset invoice data but keep embeddings
+- When you need to clean up specific invoices by storage path pattern
+
+---
+
+### Which Script to Use?
+
+| Scenario | Recommended Script |
+|----------|-------------------|
+| **Complete reset** (everything) | `reset_all_data.py` |
+| **Reset embeddings only** (keep invoices) | `cleanup_vectors.py` |
+| **Reset invoices only** (keep embeddings) | `cleanup_invoices.py` |
+| **Selective cleanup** (specific invoices) | `cleanup_invoices.py --file-path-filter` |
+
+### Recommended Order (if running separately)
+
+If you need to run `cleanup_vectors.py` and `cleanup_invoices.py` separately:
+
+1. **First**: Run `cleanup_vectors.py` (clean embeddings)
+2. **Then**: Run `cleanup_invoices.py` (clean invoice data)
+
+**Why this order?**
+- Embeddings reference invoices (via `invoice_id`), so cleaning vectors first avoids orphaned references
+- Vectors are typically larger and slower to delete
+- Logical flow: remove derived data (embeddings) before source data (invoices)
+
+**However**, the order doesn't matter for data integrity - both scripts handle foreign key constraints correctly. For convenience, use `reset_all_data.py` which does both in the correct order automatically.
 
 ---
 
