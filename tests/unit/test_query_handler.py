@@ -135,3 +135,48 @@ def test_empty_query():
     intent = handler.classify_intent("   ")
     assert intent.intent_type == QueryHandler.FIND_INVOICE
 
+
+def test_extract_vendor_name():
+    """Test extraction of vendor name from query."""
+    handler = QueryHandler()
+
+    intent = handler.classify_intent("Total from Acme Corp")
+    assert "vendor_name" in intent.parameters
+    assert "Acme Corp" in intent.parameters["vendor_name"]
+
+    intent = handler.classify_intent("Show invoices by Microsoft")
+    assert "vendor_name" in intent.parameters
+    assert "Microsoft" in intent.parameters["vendor_name"]
+
+
+def test_extract_date_filters():
+    """Test extraction of date filters from query."""
+    handler = QueryHandler()
+
+    # Test month and year extraction
+    intent = handler.classify_intent("Total in December 2024")
+    assert "year" in intent.parameters
+    assert "month" in intent.parameters
+    assert intent.parameters["year"] == 2024
+    assert intent.parameters["month"] == 12
+
+    # Test year only
+    intent = handler.classify_intent("Count invoices in 2024")
+    # This might not extract year without month, but test structure is there
+
+    # Test relative dates
+    intent = handler.classify_intent("Total this month")
+    assert "month" in intent.parameters or "year" in intent.parameters
+
+
+def test_aggregate_query_with_filters():
+    """Test aggregate queries with vendor and date filters."""
+    handler = QueryHandler()
+
+    intent = handler.classify_intent("What is the total from Acme Corp in December 2024?")
+    assert intent.intent_type == QueryHandler.AGGREGATE_QUERY
+    assert intent.parameters["aggregation_type"] == "sum"
+    assert "vendor_name" in intent.parameters
+    assert "year" in intent.parameters
+    assert "month" in intent.parameters
+

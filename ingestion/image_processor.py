@@ -26,10 +26,15 @@ def get_ocr_engine(lang: str = "ch"):
             logger.info("Initializing PaddleOCR engine", lang=lang)
             # Use "ch" (Chinese) as default - it supports both Chinese and English text
             # This is better for international invoices
-            _ocr_engine = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
-        except ImportError:
-            logger.error("PaddleOCR not installed. Please install paddleocr and paddlepaddle.")
-            raise
+            # use_angle_cls is deprecated, use use_textline_orientation if available
+            _ocr_engine = PaddleOCR(use_textline_orientation=True, lang=lang)
+        except (ImportError, TypeError):
+            try:
+                # Fallback to older version args
+                _ocr_engine = PaddleOCR(use_angle_cls=True, lang=lang)
+            except Exception:
+                logger.error("PaddleOCR not installed or initialization failed.")
+                raise
     return _ocr_engine
 
 
@@ -47,9 +52,13 @@ async def process_image(file_path: Path) -> dict[str, Any]:
     try:
         ocr = get_ocr_engine()
         # PaddleOCR expects string path or numpy array
-        result = ocr.ocr(str(file_path), cls=True)
+        # Some versions use predict(), older use ocr()
+        if hasattr(ocr, "predict"):
+            result = ocr.predict(str(file_path))
+        else:
+            result = ocr.ocr(str(file_path))
 
-        if not result or not result[0]:
+        if not result:
             logger.warning("OCR returned no results", path=str(file_path))
             return {
                 "text": "",
@@ -60,15 +69,29 @@ async def process_image(file_path: Path) -> dict[str, Any]:
                 },
             }
 
-        # Extract text from result
-        # result structure: [ [[ [coords], (text, confidence) ], ...] ]
         extracted_text = []
         confidences = []
 
-        for line in result[0]:
-            text, confidence = line[1]
-            extracted_text.append(text)
-            confidences.append(float(confidence))
+        # Handle different result structures
+        res0 = result[0]
+        
+        # New OCRResult object from PaddleX/PaddleOCR newer versions
+        # It often behaves like a dict or has these attributes
+        if hasattr(res0, "rec_texts") and hasattr(res0, "rec_scores"):
+            extracted_text = res0.rec_texts
+            confidences = [float(c) for c in res0.rec_scores]
+        elif isinstance(res0, dict) and "rec_texts" in res0 and "rec_scores" in res0:
+            extracted_text = res0["rec_texts"]
+            confidences = [float(c) for c in res0["rec_scores"]]
+        # Legacy list-of-lists structure: [ [[ [coords], (text, confidence) ], ...] ]
+        elif isinstance(res0, list):
+            for line in res0:
+                if len(line) > 1 and isinstance(line[1], (tuple, list)):
+                    text, confidence = line[1]
+                    extracted_text.append(text)
+                    confidences.append(float(confidence))
+        else:
+            logger.warning("Unknown OCR result structure", type=str(type(res0)))
 
         full_text = "\n".join(extracted_text)
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0

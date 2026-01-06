@@ -12,13 +12,19 @@ import httpx
 async def process_invoice(
     relative_path: str, 
     base_url: str = "http://localhost:8000",
-    force_reprocess: bool = False
+    force_reprocess: bool = False,
+    category: Optional[str] = None,
+    group: Optional[str] = None,
+    job_id: Optional[str] = None,
 ) -> dict:
     """Process a single invoice file."""
     url = f"{base_url}/api/v1/invoices/process"
     payload = {
         "file_path": relative_path,
         "force_reprocess": force_reprocess,
+        "category": category,
+        "group": group,
+        "job_id": job_id,
     }
     
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -40,7 +46,9 @@ async def process_invoices(
     recursive: bool = False,
     base_url: str = "http://localhost:8000",
     force_reprocess: bool = False,
-    data_root: Path = Path("data")
+    data_root: Path = Path("data"),
+    category: Optional[str] = None,
+    group: Optional[str] = None,
 ):
     """Process invoice images using flexible search criteria."""
     
@@ -74,6 +82,10 @@ async def process_invoices(
     print(f"📄 Found {len(invoice_files)} invoice files to process")
     print(f"🌐 API endpoint: {base_url}")
     print(f"🔄 Force reprocess: {force_reprocess}")
+    
+    import uuid
+    job_id = str(uuid.uuid4())
+    print(f"🆔 Job ID: {job_id}")
     print("-" * 60)
     
     results = []
@@ -96,7 +108,19 @@ async def process_invoices(
 
         print(f"[{i}/{len(invoice_files)}] Processing {relative_path}...", end=" ", flush=True)
         
-        result = await process_invoice(relative_path, base_url, force_reprocess)
+        # If group is not provided, use the parent folder name as group
+        file_group = group
+        if not file_group and file_path.parent != search_dir:
+            file_group = file_path.parent.name
+            
+        result = await process_invoice(
+            relative_path=relative_path, 
+            base_url=base_url, 
+            force_reprocess=force_reprocess,
+            category=category,
+            group=file_group,
+            job_id=job_id
+        )
         result["file"] = relative_path
         results.append(result)
         
@@ -165,6 +189,16 @@ if __name__ == "__main__":
         default=Path("data"),
         help="Root data directory for relative path resolution (default: data/)",
     )
+    parser.add_argument(
+        "--category", "-c",
+        type=str,
+        help="Logical category (e.g. Invoice, Receipt)",
+    )
+    parser.add_argument(
+        "--group", "-g",
+        type=str,
+        help="Logical group/source (e.g. grok, jimeng). If not provided, folder name will be used.",
+    )
     
     args = parser.parse_args()
     
@@ -175,7 +209,9 @@ if __name__ == "__main__":
             recursive=args.recursive,
             base_url=args.api_url,
             force_reprocess=args.force,
-            data_root=args.data_root
+            data_root=args.data_root,
+            category=args.category,
+            group=args.group
         ))
     except KeyboardInterrupt:
         print("\n\n⚠️ Processing interrupted by user")

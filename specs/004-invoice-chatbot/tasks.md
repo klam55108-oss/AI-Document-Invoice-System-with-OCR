@@ -96,17 +96,17 @@
 
 ### Tests for User Story 2 (MANDATORY per Constitution) ⚠️
 
-- [ ] T032 [P] [US2] Create unit test for query handler in tests/unit/test_query_handler.py testing aggregate_query intent classification
-- [ ] T033 [P] [US2] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing aggregate queries (totals, counts, averages)
-- [ ] T034 [P] [US2] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing date range filtering in aggregate queries
+- [X] T032 [P] [US2] Create unit test for query handler in tests/unit/test_query_handler.py testing aggregate_query intent classification
+- [X] T033 [P] [US2] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing aggregate queries (totals, counts, averages)
+- [X] T034 [P] [US2] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing date range filtering in aggregate queries
 
 ### Implementation for User Story 2
 
-- [ ] T035 [US2] Implement aggregate query handling in brain/chatbot/query_handler.py classifying aggregate_query intent and extracting parameters
-- [ ] T036 [US2] Implement aggregate calculation logic in brain/chatbot/engine.py performing totals, counts, averages across invoices
-- [ ] T037 [US2] Implement date range filtering in brain/chatbot/engine.py filtering invoices by date range for aggregate queries
-- [ ] T038 [US2] Implement vendor filtering in brain/chatbot/engine.py filtering invoices by vendor for aggregate queries
-- [ ] T039 [US2] Implement result formatting in brain/chatbot/engine.py formatting aggregate results in natural language responses
+- [X] T035 [US2] Implement aggregate query handling in brain/chatbot/query_handler.py classifying aggregate_query intent and extracting parameters
+- [X] T036 [US2] Implement aggregate calculation logic in brain/chatbot/engine.py performing totals, counts, averages across invoices
+- [X] T037 [US2] Implement date range filtering in brain/chatbot/engine.py filtering invoices by date range for aggregate queries
+- [X] T038 [US2] Implement vendor filtering in brain/chatbot/engine.py filtering invoices by vendor for aggregate queries
+- [X] T039 [US2] Implement result formatting in brain/chatbot/engine.py formatting aggregate results in natural language responses
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently. Users can ask both specific invoice questions and aggregate analytics queries.
 
@@ -120,17 +120,17 @@
 
 ### Tests for User Story 3 (MANDATORY per Constitution) ⚠️
 
-- [ ] T040 [P] [US3] Create unit test for session manager in tests/unit/test_session_manager.py testing context window (last 10 messages)
-- [ ] T041 [P] [US3] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing follow-up questions with context
-- [ ] T042 [P] [US3] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing session expiration (30 minutes)
+- [X] T040 [P] [US3] Create unit test for session manager in tests/unit/test_session_manager.py testing context window (last 10 messages)
+- [X] T041 [P] [US3] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing follow-up questions with context
+- [X] T042 [P] [US3] Create integration test for chatbot API endpoint in tests/integration/test_chatbot_api.py testing session expiration (30 minutes)
 
 ### Implementation for User Story 3
 
-- [ ] T043 [US3] Implement context window management in brain/chatbot/session_manager.py maintaining last 10 messages per session
-- [ ] T044 [US3] Implement context injection in brain/chatbot/engine.py including conversation history in LLM prompts
-- [ ] T045 [US3] Implement follow-up question resolution in brain/chatbot/engine.py resolving references to previous answers (e.g., "those", "it")
-- [ ] T046 [US3] Implement session expiration cleanup in brain/chatbot/session_manager.py removing expired sessions (30 minutes inactivity)
-- [ ] T047 [US3] Implement session expiration handling in interface/api/routes/chatbot.py creating new session when expired
+- [X] T043 [US3] Implement context window management in brain/chatbot/session_manager.py maintaining last 10 messages per session
+- [X] T044 [US3] Implement context injection in brain/chatbot/engine.py including conversation history in LLM prompts
+- [X] T045 [US3] Implement follow-up question resolution in brain/chatbot/engine.py resolving references to previous answers (e.g., "those", "it")
+- [X] T046 [US3] Implement session expiration cleanup in brain/chatbot/session_manager.py removing expired sessions (30 minutes inactivity)
+- [X] T047 [US3] Implement session expiration handling in interface/api/routes/chatbot.py creating new session when expired
 
 **Checkpoint**: All user stories should now be independently functional. Users can have natural conversations with context maintained.
 
@@ -140,19 +140,19 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T048 [P] Implement error handling for LLM service failures in brain/chatbot/engine.py showing user-friendly error messages
-- [ ] T049 [P] Implement error handling for database failures in brain/chatbot/engine.py showing user-friendly error messages
-- [ ] T050 [P] Implement result limit handling in brain/chatbot/engine.py returning max 50 invoices with "has_more" indicator
-- [ ] T051 [P] Implement ambiguous query handling in brain/chatbot/engine.py asking for clarification or listing options
-- [ ] T052 [P] Implement multilingual support in brain/chatbot/engine.py supporting English and Chinese queries
-- [ ] T053 [P] Add loading indicators in interface/dashboard/components/chatbot.py showing typing indicator while waiting for response
-- [ ] T054 [P] Add error message display in interface/dashboard/components/chatbot.py showing user-friendly error messages
-- [ ] T055 [P] Implement session cleanup background task in brain/chatbot/session_manager.py running periodic cleanup of expired sessions
-- [ ] T056 [P] Add structured logging in brain/chatbot/engine.py logging queries, responses, and errors
-- [ ] T057 [P] Add API endpoint for session management in interface/api/routes/chatbot.py: POST /sessions, GET /sessions/{id}, DELETE /sessions/{id}
+- [X] T048 [P] Implement error handling for LLM service failures in brain/chatbot/engine.py showing user-friendly error messages
+- [X] T049 [P] Implement error handling for database failures in brain/chatbot/engine.py showing user-friendly error messages
+- [X] T050 [P] Implement result limit handling in brain/chatbot/engine.py returning max 50 invoices with "has_more" indicator
+- [X] T051 [P] Implement ambiguous query handling in brain/chatbot/engine.py asking for clarification or listing options
+- [X] T052 [P] Implement multilingual support in brain/chatbot/engine.py supporting English and Chinese queries
+- [X] T053 [P] Add loading indicators in interface/dashboard/components/chatbot.py showing typing indicator while waiting for response
+- [X] T054 [P] Add error message display in interface/dashboard/components/chatbot.py showing user-friendly error messages
+- [X] T055 [P] Implement session cleanup background task in brain/chatbot/session_manager.py running periodic cleanup of expired sessions
+- [X] T056 [P] Add structured logging in brain/chatbot/engine.py logging queries, responses, and errors
+- [X] T057 [P] Add API endpoint for session management in interface/api/routes/chatbot.py: POST /sessions, GET /sessions/{id}, DELETE /sessions/{id}
 - [ ] T058 [P] Additional unit tests to meet coverage targets (80% core, 60% overall) in tests/unit/
 - [ ] T059 [P] Run quickstart.md validation testing all examples work correctly
-- [ ] T060 [P] Documentation updates in README.md or docs/ for chatbot feature
+- [X] T060 [P] Documentation updates in README.md or docs/ for chatbot feature
 
 ---
 

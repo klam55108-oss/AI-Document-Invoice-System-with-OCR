@@ -103,22 +103,74 @@ class QueryHandler:
         """Extract filter parameters from query."""
         params: Dict[str, Any] = {}
         query_lower = query.lower()
+        import re
 
         # Extract vendor name (simple pattern matching)
-        # Look for patterns like "from Acme", "vendor Acme", "Acme Corp"
-        # This is simplified - production would use NER or LLM
+        # Look for patterns like "from Acme", "vendor Acme", "Acme Corp", "by Acme"
+        vendor_patterns = [
+            r"(?:from|vendor|by)\s+([A-Z][A-Za-z\s&]+?)(?:\s|$|,|\.)",
+            r"([A-Z][A-Za-z\s&]+?)\s+(?:corp|corporation|inc|llc|ltd|company)",
+        ]
+        for pattern in vendor_patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                vendor_name = match.group(1).strip()
+                # Filter out common false positives
+                if vendor_name.lower() not in ["the", "a", "an", "this", "that"]:
+                    params["vendor_name"] = vendor_name
+                    break
 
         # Extract invoice number
         # Look for patterns like "INV-2024-001", "invoice 123"
-        import re
-
         invoice_pattern = r"(?:invoice|inv)[\s#-]*([A-Z0-9-]+)"
         match = re.search(invoice_pattern, query_lower, re.IGNORECASE)
         if match:
             params["invoice_number"] = match.group(1).upper()
 
         # Extract date mentions (simplified)
-        # Production would use date parsing library
+        # Look for patterns like "in December 2024", "this month", "last month", "2024-12"
+        # Month names
+        month_names = [
+            "january", "february", "march", "april", "may", "june",
+            "july", "august", "september", "october", "november", "december"
+        ]
+        for i, month in enumerate(month_names, 1):
+            if month in query_lower:
+                # Try to extract year
+                year_match = re.search(r"\b(20\d{2})\b", query)
+                if year_match:
+                    params["year"] = int(year_match.group(1))
+                    params["month"] = i
+                else:
+                    # Just month, assume current year or no year filter
+                    params["month"] = i
+                break
+
+        # Date range patterns: "from X to Y", "between X and Y"
+        date_range_pattern = r"(?:from|between)\s+([A-Za-z0-9\s,]+?)\s+(?:to|and)\s+([A-Za-z0-9\s,]+)"
+        match = re.search(date_range_pattern, query_lower)
+        if match:
+            # Simple extraction - in production would parse actual dates
+            params["date_range_start"] = match.group(1).strip()
+            params["date_range_end"] = match.group(2).strip()
+
+        # Relative dates: "this month", "last month", "this year", "last year"
+        if "this month" in query_lower:
+            from datetime import datetime
+            now = datetime.now()
+            params["month"] = now.month
+            params["year"] = now.year
+        elif "last month" in query_lower:
+            from datetime import datetime, timedelta
+            last_month = datetime.now() - timedelta(days=30)
+            params["month"] = last_month.month
+            params["year"] = last_month.year
+        elif "this year" in query_lower:
+            from datetime import datetime
+            params["year"] = datetime.now().year
+        elif "last year" in query_lower:
+            from datetime import datetime
+            params["year"] = datetime.now().year - 1
 
         return params
 

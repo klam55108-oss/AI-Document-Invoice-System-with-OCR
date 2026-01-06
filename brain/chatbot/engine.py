@@ -69,6 +69,10 @@ class ChatbotEngine:
 
             # Classify intent
             intent = self.query_handler.classify_intent(message)
+            
+            # Check for ambiguous queries
+            if intent.intent_type == QueryHandler.AMBIGUOUS:
+                return self._handle_ambiguous_query(message, language)
 
             # Retrieve relevant invoices
             invoice_ids = await self._retrieve_invoices(message, intent)
@@ -101,6 +105,8 @@ class ChatbotEngine:
             )
 
             # Add assistant message to session
+            # Track if we hit the result limit
+            has_more = len(invoice_ids) >= settings.CHATBOT_MAX_RESULTS
             assistant_msg = ChatMessage(
                 message_id=uuid4(),
                 role="assistant",
@@ -109,16 +115,36 @@ class ChatbotEngine:
                 metadata={
                     "invoice_ids": [UUID(inv["id"]) for inv in invoices_data],
                     "invoice_count": len(invoices_data),
-                    "has_more": len(invoices_data) >= settings.CHATBOT_MAX_RESULTS,
+                    "has_more": has_more,
+                    "total_found": len(invoice_ids) if has_more else len(invoices_data),
                 },
             )
             session.add_message(assistant_msg)
+            
+            # Add has_more indicator to response if needed
+            if has_more and len(invoices_data) > 0:
+                if language == "zh":
+                    response += f"\n\n[注：找到超过{settings.CHATBOT_MAX_RESULTS}个结果，仅显示前{settings.CHATBOT_MAX_RESULTS}个。请尝试更具体的查询。]"
+                else:
+                    response += f"\n\n[Note: Found more than {settings.CHATBOT_MAX_RESULTS} results. Showing first {settings.CHATBOT_MAX_RESULTS}. Try a more specific query.]"
 
             return response
 
         except Exception as e:
-            logger.error("Error processing message", error=str(e), message=message)
-            return self._get_error_message(language)
+            error_str = str(e)
+            logger.error(
+                "Error processing message",
+                error=error_str,
+                error_type=type(e).__name__,
+                message_preview=message[:50],
+                exc_info=True,
+            )
+            
+            # Check if it's a database error
+            if "database" in error_str.lower() or "connection" in error_str.lower():
+                return self._get_error_message(language, error_type="database")
+            else:
+                return self._get_error_message(language, error_type="generic")
 
     async def _retrieve_invoices(
         self, query: str, intent: QueryIntent
@@ -126,7 +152,13 @@ class ChatbotEngine:
         """Retrieve relevant invoice IDs using vector search and filters."""
         invoice_ids: List[UUID] = []
 
-        # Try vector search first
+        # For aggregate queries, apply filters directly to database query
+        if intent.intent_type == QueryHandler.AGGREGATE_QUERY:
+            invoice_ids = await self._query_invoices_with_filters(query, intent)
+            logger.info("Aggregate query with filters returned results", count=len(invoice_ids))
+            return invoice_ids
+
+        # For other queries, try vector search first
         try:
             invoice_ids = await self.vector_retriever.search_similar(
                 query_text=query,
@@ -210,8 +242,70 @@ class ChatbotEngine:
             return unique_ids
 
         except Exception as e:
-            logger.error("Database query failed", error=str(e), exc_info=True)
+            error_str = str(e)
+            logger.error(
+                "Database query failed",
+                error=error_str,
+                error_type=type(e).__name__,
+                query_preview=query[:50],
+                exc_info=True,
+            )
+            # Return empty list - error handling will be done at higher level
             return []
+
+    async def _query_invoices_with_filters(
+        self, query: str, intent: QueryIntent
+    ) -> List[UUID]:
+        """Query invoices with date range and vendor filters for aggregate queries."""
+        try:
+            from datetime import datetime, date
+            from sqlalchemy import and_, or_
+
+            params = intent.parameters
+            stmt = select(Invoice.id).outerjoin(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+
+            conditions = []
+
+            # Vendor filter
+            if "vendor_name" in params:
+                vendor_name = params["vendor_name"]
+                conditions.append(ExtractedData.vendor_name.ilike(f"%{vendor_name}%"))
+
+            # Date range filters
+            if "year" in params:
+                year = params["year"]
+                if "month" in params:
+                    month = params["month"]
+                    # Filter by year and month
+                    conditions.append(
+                        func.extract("year", ExtractedData.invoice_date) == year
+                    )
+                    conditions.append(
+                        func.extract("month", ExtractedData.invoice_date) == month
+                    )
+                else:
+                    # Filter by year only
+                    conditions.append(
+                        func.extract("year", ExtractedData.invoice_date) == year
+                    )
+
+            # Apply conditions
+            if conditions:
+                stmt = stmt.where(and_(*conditions))
+
+            # Limit results
+            stmt = stmt.limit(settings.CHATBOT_MAX_RESULTS)
+
+            result = await self.session.execute(stmt)
+            invoice_ids = [row[0] for row in result.fetchall()]
+
+            logger.info("Filtered query returned results", count=len(invoice_ids), filters=params)
+            return invoice_ids
+
+        except Exception as e:
+            logger.error("Filtered query failed", error=str(e), exc_info=True)
+            # Fallback to basic query
+            return await self._query_invoices_from_db(query, intent)
 
     async def _filter_by_invoice_number(
         self, invoice_ids: List[UUID], invoice_number: str
@@ -321,46 +415,142 @@ class ChatbotEngine:
             return self._generate_simple_response(intent, invoices_data)
 
         try:
-            # Build context from conversation history
+            # Build context from conversation history (use full context window)
+            # Exclude the current user message which will be added separately
             context_messages = []
-            for msg in session.messages[-5:]:  # Last 5 messages for context
+            for msg in session.messages[:-1]:  # All messages except the last one (current user message)
                 context_messages.append(
                     {"role": msg.role, "content": msg.content}
                 )
 
+            # Enhance message with follow-up resolution if needed
+            enhanced_message = self._resolve_followup_references(message, session)
+
             # Build system prompt
-            system_prompt = self._build_system_prompt(intent, language)
+            system_prompt = self._build_system_prompt(intent, language, session)
 
             # Build user prompt with invoice data
-            user_prompt = self._build_user_prompt(message, invoices_data, intent)
+            user_prompt = self._build_user_prompt(enhanced_message, invoices_data, intent)
 
-            # Call LLM
+            # Call LLM with full conversation context
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            # Add conversation history (context window already managed by session)
+            messages.extend(context_messages)
+            # Add current user prompt
+            messages.append({"role": "user", "content": user_prompt})
+
             response = self.llm_client.chat.completions.create(
                 model=self.llm_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    *context_messages,
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
                 temperature=settings.DEEPSEEK_TEMPERATURE,
             )
 
             return response.choices[0].message.content
 
         except Exception as e:
-            logger.error("LLM generation failed", error=str(e))
-            return self._generate_simple_response(intent, invoices_data)
+            error_str = str(e)
+            logger.error(
+                "LLM generation failed",
+                error=error_str,
+                error_type=type(e).__name__,
+                message_preview=message[:50],
+            )
+            
+            # Check for specific error types
+            if "timeout" in error_str.lower() or "timed out" in error_str.lower():
+                return self._get_error_message(language, error_type="timeout")
+            elif "rate limit" in error_str.lower() or "429" in error_str:
+                return self._get_error_message(language, error_type="rate_limit")
+            elif "authentication" in error_str.lower() or "401" in error_str or "403" in error_str:
+                return self._get_error_message(language, error_type="auth")
+            else:
+                return self._generate_simple_response(intent, invoices_data)
 
-    def _build_system_prompt(self, intent: QueryIntent, language: str) -> str:
-        """Build system prompt for LLM."""
+    def _build_system_prompt(
+        self, intent: QueryIntent, language: str, session: ConversationSession
+    ) -> str:
+        """Build system prompt for LLM with context awareness."""
+        base_prompt_zh = (
+            "你是一个专业的发票查询助手。请用中文回答用户关于发票的问题。"
+            "你可以参考之前的对话历史来理解用户的后续问题。"
+            "当用户使用'那些'、'它们'、'它'等代词时，请根据上下文理解用户指的是什么。"
+        )
+        base_prompt_en = (
+            "You are a helpful invoice query assistant. "
+            "Answer questions about invoices clearly and concisely. "
+            "Use the provided invoice data to answer accurately. "
+            "You can reference previous conversation history to understand follow-up questions. "
+            "When users use pronouns like 'those', 'them', 'it', interpret them based on the conversation context."
+        )
+
         if language == "zh":
-            return "你是一个专业的发票查询助手。请用中文回答用户关于发票的问题。"
+            return base_prompt_zh
+        else:
+            return base_prompt_en
+
+    def _handle_ambiguous_query(self, message: str, language: str) -> str:
+        """Handle ambiguous queries by asking for clarification."""
+        if language == "zh":
+            return (
+                "您的问题可能有多种理解方式。请提供更多细节，例如：\n"
+                "- 您想查找特定发票吗？请提供发票号或供应商名称。\n"
+                "- 您想进行统计分析吗？请说明您需要什么类型的统计（总数、平均值等）。\n"
+                "- 您想查看特定时间段的发票吗？请提供日期范围。"
+            )
         else:
             return (
-                "You are a helpful invoice query assistant. "
-                "Answer questions about invoices clearly and concisely. "
-                "Use the provided invoice data to answer accurately."
+                "Your question could be interpreted in multiple ways. Please provide more details, such as:\n"
+                "- Are you looking for a specific invoice? Please provide an invoice number or vendor name.\n"
+                "- Do you want statistical analysis? Please specify what type (total, average, etc.).\n"
+                "- Do you want to see invoices from a specific time period? Please provide a date range."
             )
+
+    def _resolve_followup_references(
+        self, message: str, session: ConversationSession
+    ) -> str:
+        """
+        Resolve follow-up question references to previous conversation.
+
+        This enhances the message by adding context when pronouns or references
+        are detected that might refer to previous answers.
+        """
+        message_lower = message.lower()
+
+        # Check for common follow-up patterns
+        followup_indicators = [
+            "those",
+            "them",
+            "it",
+            "that",
+            "this",
+            "which",
+            "what about",
+            "how about",
+            "and",
+            "also",
+        ]
+
+        # If message contains follow-up indicators and has conversation history
+        if any(indicator in message_lower for indicator in followup_indicators) and len(
+            session.messages
+        ) > 1:
+            # Look for the last assistant message to get context
+            last_assistant_msg = None
+            for msg in reversed(session.messages[:-1]):  # Exclude current message
+                if msg.role == "assistant":
+                    last_assistant_msg = msg
+                    break
+
+            if last_assistant_msg:
+                # Enhance message with context hint
+                # The LLM will use the conversation history, but we can add a hint
+                enhanced = f"{message}\n\n[Note: This is a follow-up question. Previous context: {last_assistant_msg.content[:200]}...]"
+                logger.info("Resolved follow-up reference", original=message[:50])
+                return enhanced
+
+        return message
 
     def _build_user_prompt(
         self, message: str, invoices_data: List[dict], intent: QueryIntent
@@ -402,18 +592,38 @@ class ChatbotEngine:
                     inv_desc += " (amount not extracted yet)"
                 prompt += inv_desc + "\n"
 
-            # Add summary for aggregate queries
-            if intent.intent_type == QueryIntent.AGGREGATE_QUERY:
+            # Add summary for aggregate queries with calculated values
+            if intent.intent_type == QueryHandler.AGGREGATE_QUERY:
+                agg_type = intent.parameters.get("aggregation_type", "sum")
+                agg_result = self._calculate_aggregate(invoices_data, agg_type)
+                
                 if invoices_with_amounts > 0:
                     prompt += f"\nSummary: Found {len(invoices_data)} invoice(s). "
-                    prompt += f"Total amount from {invoices_with_amounts} invoices with amounts: {total_amount:.2f} {currency}"
+                    if agg_type == "sum":
+                        prompt += f"Total amount: {total_amount:.2f} {currency}"
+                    elif agg_type == "count":
+                        prompt += f"Count: {len(invoices_data)} invoices"
+                    elif agg_type == "average":
+                        avg = total_amount / invoices_with_amounts if invoices_with_amounts > 0 else 0
+                        prompt += f"Average amount: {avg:.2f} {currency} (from {invoices_with_amounts} invoices)"
+                    elif agg_type == "max":
+                        prompt += f"Maximum amount: {agg_result:.2f} {currency}"
+                    elif agg_type == "min":
+                        prompt += f"Minimum amount: {agg_result:.2f} {currency}"
                 else:
                     prompt += f"\nSummary: Found {len(invoices_data)} invoice(s), but amounts have not been extracted yet."
 
-        if intent.intent_type == QueryIntent.AGGREGATE_QUERY:
+        if intent.intent_type == QueryHandler.AGGREGATE_QUERY:
             if invoices_data:
                 agg_type = intent.parameters.get("aggregation_type", "sum")
-                prompt += f"\n\nPlease calculate the requested {agg_type} from the invoice data above and provide a clear answer."
+                agg_result = self._calculate_aggregate(invoices_data, agg_type)
+                currency = invoices_data[0].get("currency", "USD") if invoices_data else "USD"
+                
+                prompt += f"\n\nCalculated {agg_type}: {agg_result}"
+                if agg_type in ["sum", "average", "max", "min"]:
+                    prompt += f" {currency}"
+                prompt += f" (from {len(invoices_data)} invoice(s)). "
+                prompt += "Please provide a clear, natural language answer using this calculation."
             else:
                 prompt += "\nThe user asked for an aggregate calculation, but no invoices were found. Explain this clearly."
 
@@ -434,16 +644,25 @@ class ChatbotEngine:
                 "- Try rephrasing your question or checking if invoices are in the system"
             )
 
-        if intent.intent_type == QueryIntent.AGGREGATE_QUERY:
+        if intent.intent_type == QueryHandler.AGGREGATE_QUERY:
             agg_type = intent.parameters.get("aggregation_type", "count")
+            agg_result = self._calculate_aggregate(invoices_data, agg_type)
+            currency = invoices_data[0].get("currency", "USD") if invoices_data else "USD"
+            
             if agg_type == "count":
                 return f"I found {len(invoices_data)} invoice(s)."
             elif agg_type == "sum":
-                total = sum(
-                    inv.get("total_amount", 0) or 0 for inv in invoices_data
-                )
-                currency = invoices_data[0].get("currency", "USD") if invoices_data else "USD"
-                return f"Total amount: {total:.2f} {currency}"
+                return f"Total amount: {agg_result:.2f} {currency}"
+            elif agg_type == "average":
+                invoices_with_amounts = sum(1 for inv in invoices_data if inv.get("total_amount", 0) or 0)
+                if invoices_with_amounts > 0:
+                    return f"Average amount: {agg_result:.2f} {currency} (from {invoices_with_amounts} invoices)"
+                else:
+                    return f"I found {len(invoices_data)} invoice(s), but amounts have not been extracted yet."
+            elif agg_type == "max":
+                return f"Maximum amount: {agg_result:.2f} {currency}"
+            elif agg_type == "min":
+                return f"Minimum amount: {agg_result:.2f} {currency}"
             else:
                 return f"I found {len(invoices_data)} invoice(s)."
 
@@ -455,10 +674,54 @@ class ChatbotEngine:
             response += f"... and {len(invoices_data) - 5} more"
         return response
 
-    def _get_error_message(self, language: str) -> str:
-        """Get user-friendly error message."""
-        if language == "zh":
-            return "抱歉，处理您的请求时出现了问题。请稍后再试。"
+    def _calculate_aggregate(self, invoices_data: List[dict], agg_type: str) -> float:
+        """Calculate aggregate value from invoice data."""
+        if not invoices_data:
+            return 0.0
+
+        amounts = [inv.get("total_amount", 0) or 0 for inv in invoices_data if inv.get("total_amount")]
+
+        if not amounts:
+            return 0.0
+
+        if agg_type == "sum":
+            return sum(amounts)
+        elif agg_type == "count":
+            return len(invoices_data)
+        elif agg_type == "average":
+            return sum(amounts) / len(amounts) if amounts else 0.0
+        elif agg_type == "max":
+            return max(amounts)
+        elif agg_type == "min":
+            return min(amounts)
         else:
-            return "I'm having trouble processing your request. Please try again in a moment."
+            return sum(amounts)
+
+    def _get_error_message(self, language: str, error_type: str = "generic") -> str:
+        """Get user-friendly error message."""
+        error_messages = {
+            "generic": {
+                "zh": "抱歉，处理您的请求时出现了问题。请稍后再试。",
+                "en": "I'm having trouble processing your request. Please try again in a moment.",
+            },
+            "timeout": {
+                "zh": "请求超时。服务器可能正在处理复杂查询，请稍后再试。",
+                "en": "Request timed out. The server may be processing a complex query. Please try again.",
+            },
+            "rate_limit": {
+                "zh": "请求过于频繁，请稍后再试。",
+                "en": "Too many requests. Please wait a moment before trying again.",
+            },
+            "auth": {
+                "zh": "认证失败。请检查API密钥配置。",
+                "en": "Authentication failed. Please check API key configuration.",
+            },
+            "database": {
+                "zh": "数据库连接失败。请稍后再试。",
+                "en": "Database connection failed. Please try again later.",
+            },
+        }
+
+        messages = error_messages.get(error_type, error_messages["generic"])
+        return messages.get(language, messages["en"])
 
