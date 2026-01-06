@@ -262,7 +262,10 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
                 result = {
                     "id": str(invoice.id),
                     "file_name": invoice.file_name,
-                    "file_path": invoice.file_path,
+                    "storage_path": invoice.storage_path,
+                    "category": invoice.category,
+                    "group": invoice.group,
+                    "job_id": str(invoice.job_id) if invoice.job_id else None,
                     "file_type": invoice.file_type,
                     "file_hash": invoice.file_hash,
                     "file_size": invoice.file_size,

@@ -29,6 +29,9 @@ async def process_invoice_file(
     session: AsyncSession,
     force_reprocess: bool = False,
     upload_metadata: dict | None = None,
+    category: str | None = None,
+    group: str | None = None,
+    job_id: uuid.UUID | None = None,
 ) -> Invoice:
     """Process an invoice file end-to-end.
 
@@ -94,11 +97,19 @@ async def process_invoice_file(
         except Exception as e:
             logger.warning("File encryption failed, continuing without encryption", error=str(e))
 
+    # Determine group/category from path if not provided
+    # e.g. data/grok/9.png -> group = grok
+    if not group and len(file_path.relative_to(data_dir).parts) > 1:
+        group = file_path.relative_to(data_dir).parts[0]
+    
     # Create invoice record
     invoice = Invoice(
         id=uuid.uuid4(),
-        file_path=str(file_path.relative_to(data_dir)),
+        storage_path=str(file_path.relative_to(data_dir)),
         file_name=file_path.name,
+        category=category,
+        group=group,
+        job_id=job_id,
         file_hash=file_hash,
         file_size=file_size,
         file_type=file_type,

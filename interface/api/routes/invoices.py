@@ -93,6 +93,10 @@ async def list_invoices(
         summary = InvoiceSummary(
             id=str(invoice.id),
             file_name=invoice.file_name,
+            storage_path=invoice.storage_path,
+            category=invoice.category,
+            group=invoice.group,
+            job_id=str(invoice.job_id) if invoice.job_id else None,
             file_type=invoice.file_type,
             processing_status=invoice.processing_status.value,
             vendor_name=extracted_data.vendor_name if extracted_data else None,
@@ -186,7 +190,10 @@ async def get_invoice(
     invoice_detail = InvoiceDetail(
         id=str(invoice.id),
         file_name=invoice.file_name,
-        file_path=invoice.file_path,
+        storage_path=invoice.storage_path,
+        category=invoice.category,
+        group=invoice.group,
+        job_id=str(invoice.job_id) if invoice.job_id else None,
         file_type=invoice.file_type,
         file_hash=invoice.file_hash,
         version=invoice.version,
@@ -230,6 +237,9 @@ async def process_invoice(
             data_dir=data_dir,
             session=session,
             force_reprocess=request.force_reprocess,
+            category=request.category,
+            group=request.group,
+            job_id=uuid.UUID(request.job_id) if request.job_id else None,
         )
 
         await session.commit()
@@ -340,7 +350,7 @@ async def bulk_reprocess_invoices(
                 continue
 
             # Reprocess invoice
-            file_path = Path("data") / invoice.file_path
+            file_path = Path("data") / invoice.storage_path
             if not file_path.exists():
                 results.append(
                     BulkActionItem(
@@ -353,17 +363,21 @@ async def bulk_reprocess_invoices(
                 continue
 
             # Create processing job
-            job = await process_invoice_file(
+            job_invoice = await process_invoice_file(
                 file_path=file_path,
+                data_dir=Path("data"),
                 session=session,
                 force_reprocess=request.force_reprocess,
+                category=invoice.category,
+                group=invoice.group,
+                job_id=invoice.job_id,
             )
 
             results.append(
                 BulkActionItem(
                     invoice_id=invoice_id_str,
                     status="success",
-                    message=f"Reprocessing job created: {job.id}",
+                    message=f"Reprocessing job created for invoice: {job_invoice.id}",
                 )
             )
             successful += 1

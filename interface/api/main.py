@@ -10,6 +10,7 @@ from core.logging import configure_logging, get_logger
 from core.queue import init_queue
 from core.jobs import register_handlers
 from interface.api.routes import analytics, chatbot, health, invoices, uploads
+from brain.chatbot.session_manager import session_manager
 
 logger = get_logger(__name__)
 
@@ -38,6 +39,22 @@ async def lifespan(app: FastAPI):
         # Start the queue listener in the background
         import asyncio
         app.state.queue_task = asyncio.create_task(queue.run())
+        
+        # Start session cleanup background task
+        async def cleanup_sessions_periodically():
+            """Periodically clean up expired chatbot sessions."""
+            while True:
+                try:
+                    await asyncio.sleep(300)  # Run every 5 minutes
+                    removed = session_manager.cleanup_expired()
+                    if removed > 0:
+                        logger.info("Cleaned up expired chatbot sessions", count=removed)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error("Error in session cleanup task", error=str(e))
+        
+        app.state.session_cleanup_task = asyncio.create_task(cleanup_sessions_periodically())
         logger.info("Application started and job queue listener running")
     else:
         logger.warning("DATABASE_URL not set, database not initialized")
@@ -49,6 +66,13 @@ async def lifespan(app: FastAPI):
         app.state.queue_task.cancel()
         try:
             await app.state.queue_task
+        except asyncio.CancelledError:
+            pass
+    
+    if hasattr(app.state, "session_cleanup_task"):
+        app.state.session_cleanup_task.cancel()
+        try:
+            await app.state.session_cleanup_task
         except asyncio.CancelledError:
             pass
     

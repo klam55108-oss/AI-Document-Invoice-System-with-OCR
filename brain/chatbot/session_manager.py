@@ -87,3 +87,12 @@ class SessionManager:
             del self.sessions[sid]
         return len(expired)
 
+    def get_session_count(self) -> int:
+        """Get current number of active sessions."""
+        return len(self.sessions)
+
+
+# Default shared instance
+session_manager = SessionManager()
+
+

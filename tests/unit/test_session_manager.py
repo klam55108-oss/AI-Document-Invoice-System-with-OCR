@@ -164,3 +164,64 @@ def test_multiple_messages_order():
     for i, msg in enumerate(session.messages):
         assert msg.content == f"Message {i}"
 
+
+def test_context_window_last_10_messages():
+    """Test that context window maintains last 10 messages (5 exchanges)."""
+    manager = SessionManager()
+    session = manager.create_session()
+
+    # Add 15 messages (more than context window of 10)
+    for i in range(15):
+        message = ChatMessage(
+            message_id=UUID(f"{i:08d}-0000-0000-0000-000000000000"),
+            role="user" if i % 2 == 0 else "assistant",
+            content=f"Message {i}",
+            timestamp=datetime.utcnow(),
+        )
+        session.add_message(message)
+
+    # Should only keep last 10 messages
+    assert len(session.messages) == 10
+
+    # First message should be message 5 (15 - 10 = 5)
+    assert "Message 5" in session.messages[0].content
+    # Last message should be message 14
+    assert "Message 14" in session.messages[-1].content
+
+    # Verify messages are in order
+    for i in range(10):
+        expected_num = 5 + i
+        assert f"Message {expected_num}" in session.messages[i].content
+
+
+def test_context_window_preserves_recent_conversation():
+    """Test that context window preserves recent conversation flow."""
+    manager = SessionManager()
+    session = manager.create_session()
+
+    # Simulate a conversation with multiple exchanges
+    exchanges = [
+        ("user", "How many invoices?"),
+        ("assistant", "I found 42 invoices."),
+        ("user", "What's the total?"),
+        ("assistant", "The total is $10,000."),
+        ("user", "Show me details"),
+        ("assistant", "Here are the details..."),
+        ("user", "What about those?"),
+        ("assistant", "Those invoices are..."),
+    ]
+
+    for role, content in exchanges:
+        message = ChatMessage(
+            message_id=uuid4(),
+            role=role,
+            content=content,
+            timestamp=datetime.utcnow(),
+        )
+        session.add_message(message)
+
+    # All messages should be preserved (8 messages < 10 limit)
+    assert len(session.messages) == 8
+    assert session.messages[-2].content == "What about those?"
+    assert session.messages[-1].content == "Those invoices are..."
+

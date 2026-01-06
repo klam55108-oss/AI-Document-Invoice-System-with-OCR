@@ -61,6 +61,8 @@ def render_chatbot_tab() -> None:
 
         # Get response from API
         with st.chat_message("assistant"):
+            # Show typing indicator
+            message_placeholder = st.empty()
             with st.spinner("Thinking..."):
                 try:
                     with httpx.Client(timeout=30.0) as client:
@@ -75,7 +77,8 @@ def render_chatbot_tab() -> None:
 
                         if response.status_code == 200:
                             data = response.json()
-                            st.write(data["message"])
+                            # Display response with typing effect simulation
+                            message_placeholder.write(data["message"])
 
                             # Add assistant message to history
                             st.session_state.chatbot_messages.append(
@@ -113,9 +116,23 @@ def render_chatbot_tab() -> None:
                             )
 
                 except httpx.TimeoutException:
-                    st.error("Request timed out. The server may be processing a complex query. Please try again.")
+                    message_placeholder.error(
+                        "⏱️ Request timed out. The server may be processing a complex query. "
+                        "Please try again or refine your question."
+                    )
+                    logger.warning("Chatbot request timeout", session_id=st.session_state.chatbot_session_id)
                 except httpx.ConnectError:
-                    st.error("Failed to connect to API. Make sure the FastAPI server is running.")
+                    message_placeholder.error(
+                        "🔌 Failed to connect to API. Please make sure the FastAPI server is running on port 8000."
+                    )
+                    logger.error("Chatbot API connection error")
+                except httpx.HTTPStatusError as e:
+                    message_placeholder.error(
+                        f"❌ Server error (Status {e.response.status_code}). Please try again later."
+                    )
+                    logger.error("Chatbot HTTP error", status_code=e.response.status_code, error=str(e))
                 except Exception as e:
-                    st.error(f"An error occurred: {str(e)}")
-                    logger.error("Chatbot error", error=str(e))
+                    message_placeholder.error(
+                        f"❌ An unexpected error occurred: {str(e)}. Please try again or contact support."
+                    )
+                    logger.error("Chatbot unexpected error", error=str(e), exc_info=True)

@@ -28,6 +28,9 @@ class ProcessInvoiceRequest(BaseModel):
     """Request to process an invoice file."""
 
     file_path: str = Field(..., description="Relative path to file in data/ directory")
+    category: str | None = Field(None, description="Logical category (e.g. Invoice, Receipt)")
+    group: str | None = Field(None, description="Logical group/source (e.g. grok, jimeng)")
+    job_id: str | None = Field(None, description="Batch/Job identifier (UUID)")
     force_reprocess: bool = Field(False, description="Force reprocessing even if file hash exists")
 
 
@@ -71,6 +74,10 @@ class InvoiceSummary(BaseModel):
 
     id: str = Field(..., description="Invoice UUID")
     file_name: str = Field(..., description="Original filename")
+    storage_path: str | None = Field(None, description="Storage path or key")
+    category: str | None = Field(None, description="Category")
+    group: str | None = Field(None, description="Group")
+    job_id: str | None = Field(None, description="Job ID")
     file_type: str | None = Field(None, description="File type")
     processing_status: str = Field(..., description="Processing status")
     vendor_name: str | None = Field(None, description="Vendor name")
@@ -140,7 +147,10 @@ class InvoiceDetail(BaseModel):
 
     id: str
     file_name: str
-    file_path: str
+    storage_path: str
+    category: str | None = None
+    group: str | None = None
+    job_id: str | None = None
     file_type: str
     file_hash: str
     version: int
@@ -232,7 +242,10 @@ class UploadStatusData(BaseModel):
 
     invoice_id: str = Field(..., description="Invoice UUID")
     file_name: str = Field(..., description="Original filename")
-    file_path: str | None = Field(None, description="Relative path from data/ directory")
+    storage_path: str | None = Field(None, description="Relative path from data/ directory")
+    category: str | None = Field(None, description="Category")
+    group: str | None = Field(None, description="Group")
+    job_id: str | None = Field(None, description="Job ID")
     processing_status: str = Field(..., description="Processing status")
     upload_metadata: UploadMetadata | None = Field(None, description="Upload metadata")
     error_message: str | None = Field(None, description="Error message if processing failed")

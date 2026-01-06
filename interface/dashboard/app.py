@@ -769,6 +769,9 @@ def display_invoice_detail(preselected_id: str = None):
         with col1:
             st.subheader("Invoice Info")
             st.write(f"**Name:** {invoice_detail['file_name']}")
+            st.write(f"**Category:** {invoice_detail.get('category', '—')}")
+            st.write(f"**Group:** {invoice_detail.get('group', '—')}")
+            st.write(f"**Job ID:** {invoice_detail.get('job_id', '—')}")
             st.write(f"**Type:** {invoice_detail['file_type'].upper()}")
             st.write(f"**Version:** {invoice_detail['version']}")
             st.write(f"**Created:** {invoice_detail['created_at'].strftime('%Y-%m-%d %H:%M') if invoice_detail['created_at'] else '—'}")
@@ -806,7 +809,7 @@ def display_invoice_detail(preselected_id: str = None):
 
         with col3:
             st.subheader("📄 File Preview")
-            file_path = invoice_detail.get("file_path")
+            storage_path = invoice_detail.get("storage_path")
             file_hash = invoice_detail.get("file_hash")
             file_type = invoice_detail.get("file_type", "").lower()
             
@@ -815,9 +818,9 @@ def display_invoice_detail(preselected_id: str = None):
             if image_modal_key not in st.session_state:
                 st.session_state[image_modal_key] = False
             
-            if file_path:
+            if storage_path:
                 # Use path resolver to find file in data/ or data/encrypted/
-                resolved = resolve_file_path(file_path, file_hash=file_hash, data_dir="data")
+                resolved = resolve_file_path(storage_path, file_hash=file_hash, data_dir="data")
                 
                 if resolved["exists"] and resolved["resolved_path"]:
                     resolved_path = resolved["resolved_path"]
@@ -852,15 +855,15 @@ def display_invoice_detail(preselected_id: str = None):
                             st.caption(f"📍 File location: Encrypted storage")
                 else:
                     st.warning("⚠️ **Source file not found on disk**")
-                    st.caption(f"Expected at: `{file_path}`")
+                    st.caption(f"Expected at: `{storage_path}`")
                     if resolved.get("error"):
                         st.caption(f"💡 {resolved['error']}")
                     if file_hash:
                         st.caption(f"💡 Also checked encrypted location with hash: `{file_hash[:8]}...`")
         
         # Full-size image modal/popup (outside columns for full width)
-        if file_path and file_type in ["jpg", "jpeg", "png"]:
-            resolved = resolve_file_path(file_path, file_hash=file_hash, data_dir="data")
+        if storage_path and file_type in ["jpg", "jpeg", "png"]:
+            resolved = resolve_file_path(storage_path, file_hash=file_hash, data_dir="data")
             if resolved["exists"] and resolved["resolved_path"] and st.session_state[image_modal_key]:
                 st.markdown("---")
                 with st.container(border=True):

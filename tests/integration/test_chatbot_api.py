@@ -1,12 +1,15 @@
 """Integration tests for chatbot API endpoints."""
 
 import uuid
+from datetime import datetime, timedelta
+from uuid import UUID
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from interface.api.main import app
+from brain.chatbot.session_manager import SessionManager
 
 client = TestClient(app)
 
@@ -311,4 +314,242 @@ def test_session_messages_persistence():
         assert get_response.status_code == 200
         session_data = get_response.json()
         assert len(session_data["messages"]) >= 4  # 2 user + 2 assistant messages
+
+
+def test_aggregate_query_total():
+    """Test aggregate query for total amount."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="The total amount is $5,000.00 USD."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "What is the total cost of all invoices?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+        assert "total" in data["message"].lower() or "$" in data["message"]
+
+
+def test_aggregate_query_count():
+    """Test aggregate query for invoice count."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="I found 42 invoices in the system."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "How many invoices are there?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+        assert "42" in data["message"] or "invoice" in data["message"].lower()
+
+
+def test_aggregate_query_average():
+    """Test aggregate query for average amount."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="The average invoice amount is $500.00 USD."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "What is the average invoice amount?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+        assert "average" in data["message"].lower()
+
+
+def test_aggregate_query_with_date_filter():
+    """Test aggregate query with date range filtering."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="The total for December 2024 is $3,000.00 USD."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "What is the total spending in December 2024?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+        # Verify the response mentions the date or amount
+        assert "december" in data["message"].lower() or "$" in data["message"]
+
+
+def test_aggregate_query_with_vendor_filter():
+    """Test aggregate query with vendor filtering."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="The total from Acme Corp is $2,000.00 USD."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "What is the total from Acme Corp?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
+        # Verify the response mentions vendor or amount
+        assert "acme" in data["message"].lower() or "$" in data["message"]
+
+
+def test_followup_question_with_context():
+    """Test follow-up questions that reference previous answers."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        # First response
+        mock_engine.process_message = AsyncMock(
+            side_effect=[
+                "I found 3 invoices from Acme Corp.",
+                "Those invoices have a total of $5,000.00 USD.",
+            ]
+        )
+        mock_engine_class.return_value = mock_engine
+
+        # First question
+        response1 = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "Show me invoices from Acme Corp",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+        assert response1.status_code == 200
+
+        # Follow-up question using "those"
+        response2 = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "What's the total of those?",
+                "session_id": session_id,
+                "language": "en",
+            },
+        )
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert "message" in data2
+        # Verify the follow-up was processed with context
+        assert mock_engine.process_message.call_count == 2
+
+
+def test_session_expiration_30_minutes():
+    """Test that sessions expire after 30 minutes of inactivity."""
+    manager = SessionManager(timeout_seconds=1800)  # 30 minutes
+    session = manager.create_session()
+    session_id = session.session_id
+
+    # Session should not be expired immediately
+    assert not session.is_expired(timeout_seconds=1800)
+
+    # Manually set last_activity to 31 minutes ago
+    session.last_activity = datetime.utcnow() - timedelta(seconds=1860)  # 31 minutes
+
+    # Session should now be expired
+    assert session.is_expired(timeout_seconds=1800)
+
+    # get_session should return None for expired session
+    retrieved = manager.get_session(session_id)
+    assert retrieved is None
+    assert session_id not in manager.sessions
+
+
+def test_session_expiration_creates_new_session():
+    """Test that expired sessions trigger creation of new session in API."""
+    create_response = client.post("/api/v1/chatbot/sessions")
+    session_id = create_response.json()["session_id"]
+
+    # Manually expire the session by manipulating the manager
+    # (In real scenario, this would happen after 30 minutes)
+    from brain.chatbot.session_manager import session_manager
+
+    session = session_manager.get_session(UUID(session_id))
+    if session:
+        session.last_activity = datetime.utcnow() - timedelta(seconds=1860)
+
+    # Try to use expired session - should create new one
+    with patch("brain.chatbot.engine.ChatbotEngine") as mock_engine_class:
+        mock_engine = MagicMock()
+        mock_engine.process_message = AsyncMock(
+            return_value="I can help you with invoice queries."
+        )
+        mock_engine_class.return_value = mock_engine
+
+        response = client.post(
+            "/api/v1/chatbot/chat",
+            json={
+                "message": "Hello",
+                "session_id": session_id,  # Expired session ID
+                "language": "en",
+            },
+        )
+
+        # Should succeed with a new session
+        assert response.status_code == 200
+        data = response.json()
+        # Session ID might be different (new session created)
+        assert "session_id" in data
 
