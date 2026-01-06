@@ -154,6 +154,8 @@ class ExtractedData(Base):
     __table_args__ = (
         Index("idx_extracted_data_vendor", "vendor_name"),
         Index("idx_extracted_data_date", "invoice_date"),
+        Index("idx_extracted_data_total_amount", "total_amount"),
+        Index("idx_extracted_data_confidence", "extraction_confidence"),
         CheckConstraint("subtotal IS NULL OR subtotal::numeric >= 0", name="check_subtotal_non_negative"),
         CheckConstraint("tax_amount IS NULL OR tax_amount::numeric >= 0", name="check_tax_non_negative"),
         CheckConstraint("total_amount IS NULL OR total_amount::numeric >= 0", name="check_total_non_negative"),

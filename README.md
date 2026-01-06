@@ -97,6 +97,42 @@ flowchart TD
    streamlit run interface/dashboard/app.py
    ```
 
+## 📊 Dashboard Features
+
+The Streamlit dashboard (`http://localhost:8501`) provides comprehensive invoice review and analytics capabilities:
+
+### Invoice List Tab
+- **Analytics Dashboard**: Interactive charts showing:
+  - Status distribution (pie chart)
+  - Processing trends over time (line chart)
+  - Vendor analysis (bar chart)
+  - Financial summary (total amounts, tax breakdown, currency distribution)
+- **Advanced Filtering**:
+  - Processing status, vendor name, date range
+  - Amount range (min/max)
+  - Extraction confidence threshold
+  - Validation status (all passed, has failed, has warning)
+- **Bulk Actions**:
+  - Select multiple invoices
+  - Bulk reprocess with progress tracking
+  - Force reprocess option
+- **Export**: Download filtered invoice list as CSV
+
+### Invoice Detail Tab
+- **File Preview**: Automatic path resolution for files in `data/` or `data/encrypted/`
+- **Enhanced Validation Display**:
+  - Color-coded validation results with severity indicators
+  - Suggested actions for failed validations
+  - Grouped by status (failed, warnings, passed)
+- **Missing Data Handling**: Clear indicators and explanations for missing financial fields
+- **Export**: Download invoice detail as PDF report
+
+### Key Features
+- **Real-time Analytics**: Live charts updated from database
+- **Smart File Resolution**: Automatically finds files in original or encrypted storage
+- **User-Friendly Error Messages**: Context-aware validation errors with actionable suggestions
+- **Performance Optimized**: Database indexes for fast filtering and queries
+
 ### Processing Invoices
 
 Once your services are running, you can process invoices in several ways:

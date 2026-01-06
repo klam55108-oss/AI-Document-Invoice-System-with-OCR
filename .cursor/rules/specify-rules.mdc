@@ -1,0 +1,29 @@
+# ai-einvoicing Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2026-01-05
+
+## Active Technologies
+
+- Python 3.12 + Streamlit >=1.39.0, pandas >=2.2.0, plotly >=5.18.0 (for charts), reportlab >=4.0.0 (for PDF export), sqlalchemy[asyncio] >=2.0.36 (002-dashboard-improvements)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+
+## Code Style
+
+Python 3.12: Follow standard conventions
+
+## Recent Changes
+
+- 002-dashboard-improvements: Added Python 3.12 + Streamlit >=1.39.0, pandas >=2.2.0, plotly >=5.18.0 (for charts), reportlab >=4.0.0 (for PDF export), sqlalchemy[asyncio] >=2.0.36
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

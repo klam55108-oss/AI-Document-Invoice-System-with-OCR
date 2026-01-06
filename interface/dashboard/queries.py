@@ -1,11 +1,14 @@
 """Database query utilities for dashboard data retrieval."""
 
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine, async_sessionmaker
 
-from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult
+from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult, ValidationStatus
 
 # Global engine and session factory (shared across requests)
 _engine: AsyncEngine | None = None
@@ -56,7 +59,12 @@ def get_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
 async def get_invoice_list(
     status: ProcessingStatus | None = None,
     search_query: str | None = None,
-    date_range: tuple | None = None
+    date_range: tuple | None = None,
+    vendor: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    confidence_min: float | None = None,
+    validation_status: str | None = None,
 ) -> list[Invoice]:
     """Get list of invoices with optional filters.
 
@@ -64,6 +72,11 @@ async def get_invoice_list(
         status: Optional processing status filter
         search_query: Optional search string (matches file name or vendor)
         date_range: Optional tuple of (start_date, end_date)
+        vendor: Optional vendor name filter (partial match)
+        amount_min: Optional minimum total amount filter
+        amount_max: Optional maximum total amount filter
+        confidence_min: Optional minimum extraction confidence filter (0.0-1.0)
+        validation_status: Optional validation status filter ("all_passed", "has_failed", "has_warning")
 
     Returns:
         List of Invoice objects
@@ -129,6 +142,48 @@ async def get_invoice_list(
                 # Add one day to end_date to include all of that day
                 from datetime import timedelta
                 query = query.where(Invoice.created_at < end_date + timedelta(days=1))
+        
+        # Apply advanced filters
+        if vendor:
+            vendor_pattern = f"%{vendor}%"
+            query = query.where(ExtractedData.vendor_name.ilike(vendor_pattern))
+        
+        if amount_min is not None:
+            query = query.where(ExtractedData.total_amount >= amount_min)
+        
+        if amount_max is not None:
+            query = query.where(ExtractedData.total_amount <= amount_max)
+        
+        if confidence_min is not None:
+            query = query.where(ExtractedData.extraction_confidence >= confidence_min)
+        
+        if validation_status:
+            from core.models import ValidationResult, ValidationStatus
+            
+            if validation_status == "all_passed":
+                # All validations passed - exclude invoices with failures
+                subquery = (
+                    select(ValidationResult.invoice_id)
+                    .where(ValidationResult.status == ValidationStatus.FAILED)
+                    .distinct()
+                )
+                query = query.where(~Invoice.id.in_(subquery))
+            elif validation_status == "has_failed":
+                # Has at least one failed validation
+                subquery = (
+                    select(ValidationResult.invoice_id)
+                    .where(ValidationResult.status == ValidationStatus.FAILED)
+                    .distinct()
+                )
+                query = query.where(Invoice.id.in_(subquery))
+            elif validation_status == "has_warning":
+                # Has at least one warning
+                subquery = (
+                    select(ValidationResult.invoice_id)
+                    .where(ValidationResult.status == ValidationStatus.WARNING)
+                    .distinct()
+                )
+                query = query.where(Invoice.id.in_(subquery))
 
         # Use async context manager to ensure proper session lifecycle
         async with session_factory() as session:
@@ -256,5 +311,360 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
                 raise
     finally:
         # Dispose engine when done (cleans up connections for this event loop)
+        await engine.dispose()
+
+
+async def get_status_distribution() -> dict[str, int]:
+    """Get invoice processing status distribution for charts.
+
+    Returns:
+        Dictionary mapping status names to counts
+        Example: {"completed": 150, "failed": 10, "processing": 5}
+    """
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL not set")
+
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    try:
+        async with session_factory() as session:
+            try:
+                query = select(
+                    Invoice.processing_status,
+                    func.count(Invoice.id).label("count"),
+                ).group_by(Invoice.processing_status)
+
+                result = await session.execute(query)
+                rows = result.all()
+
+                status_counts: dict[str, int] = {}
+                for row in rows:
+                    status = row.processing_status
+                    status_str = status.value if hasattr(status, "value") else str(status)
+                    status_counts[status_str] = row.count
+
+                await session.commit()
+                return status_counts
+            except Exception:
+                await session.rollback()
+                raise
+    finally:
+        await engine.dispose()
+
+
+async def get_time_series_data(
+    aggregation: str = "daily",
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> list[dict[str, Any]]:
+    """Get time series data for processing volume trends.
+
+    Args:
+        aggregation: Time aggregation level ("daily", "weekly", "monthly")
+        start_date: Optional start date filter
+        end_date: Optional end date filter
+
+    Returns:
+        List of dictionaries with "date" and "count" keys
+        Example: [{"date": "2025-01-01", "count": 25}, ...]
+    """
+    import os
+    from dotenv import load_dotenv
+    from typing import Any
+
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL not set")
+
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    try:
+        async with session_factory() as session:
+            try:
+                # Determine date truncation based on aggregation
+                if aggregation == "daily":
+                    date_expr = func.date(Invoice.created_at)
+                elif aggregation == "weekly":
+                    date_expr = func.date_trunc("week", Invoice.created_at)
+                elif aggregation == "monthly":
+                    date_expr = func.date_trunc("month", Invoice.created_at)
+                else:
+                    date_expr = func.date(Invoice.created_at)
+
+                query = select(
+                    date_expr.label("date"),
+                    func.count(Invoice.id).label("count"),
+                ).group_by(date_expr)
+
+                if start_date:
+                    query = query.where(Invoice.created_at >= datetime.combine(start_date, datetime.min.time()))
+                if end_date:
+                    end_datetime = datetime.combine(end_date, datetime.max.time())
+                    query = query.where(Invoice.created_at <= end_datetime)
+
+                query = query.order_by(date_expr)
+
+                result = await session.execute(query)
+                rows = result.all()
+
+                series_data = []
+                for row in rows:
+                    series_data.append(
+                        {
+                            "date": row.date.isoformat() if isinstance(row.date, date) else row.date.strftime("%Y-%m-%d"),
+                            "count": row.count,
+                        }
+                    )
+
+                await session.commit()
+                return series_data
+            except Exception:
+                await session.rollback()
+                raise
+    finally:
+        await engine.dispose()
+
+
+async def get_vendor_analysis_data(
+    sort_by: str = "count",
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Get vendor analysis data for charts.
+
+    Args:
+        sort_by: Sort by "count" or "amount"
+        limit: Number of top vendors to return
+
+    Returns:
+        List of dictionaries with vendor information
+        Example: [{"vendor": "Vendor A", "invoice_count": 50, "total_amount": 100000.00}, ...]
+    """
+    import os
+    from dotenv import load_dotenv
+    from typing import Any
+
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL not set")
+
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    try:
+        async with session_factory() as session:
+            try:
+                query = (
+                    select(
+                        ExtractedData.vendor_name.label("vendor"),
+                        func.count(func.distinct(Invoice.id)).label("invoice_count"),
+                        func.coalesce(func.sum(ExtractedData.total_amount), 0).label("total_amount"),
+                    )
+                    .select_from(Invoice)
+                    .join(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+                    .where(ExtractedData.vendor_name.isnot(None))
+                    .group_by(ExtractedData.vendor_name)
+                )
+
+                if sort_by == "count":
+                    query = query.order_by(func.count(func.distinct(Invoice.id)).desc())
+                else:
+                    query = query.order_by(func.sum(ExtractedData.total_amount).desc())
+
+                query = query.limit(limit)
+
+                result = await session.execute(query)
+                rows = result.all()
+
+                vendor_data = []
+                for row in rows:
+                    vendor_data.append(
+                        {
+                            "vendor": row.vendor,
+                            "invoice_count": row.invoice_count,
+                            "total_amount": float(row.total_amount) if row.total_amount else 0.0,
+                        }
+                    )
+
+                await session.commit()
+                return vendor_data
+            except Exception:
+                await session.rollback()
+                raise
+    finally:
+        await engine.dispose()
+
+
+async def get_financial_summary_data() -> dict[str, Any]:
+    """Get financial summary data for charts.
+
+    Returns:
+        Dictionary with financial aggregates
+        Example: {
+            "total_amount": 500000.00,
+            "total_tax": 50000.00,
+            "tax_breakdown": [{"rate": 0.10, "amount": 50000.00}, ...],
+            "currency_distribution": [{"currency": "USD", "count": 100}, ...]
+        }
+    """
+    import os
+    from dotenv import load_dotenv
+    from typing import Any
+
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("DATABASE_URL not set")
+
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False,
+    )
+
+    try:
+        async with session_factory() as session:
+            try:
+                # Get totals for completed invoices only
+                totals_query = (
+                    select(
+                        func.coalesce(func.sum(ExtractedData.total_amount), 0).label("total_amount"),
+                        func.coalesce(func.sum(ExtractedData.tax_amount), 0).label("total_tax"),
+                    )
+                    .select_from(Invoice)
+                    .join(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+                    .where(Invoice.processing_status == ProcessingStatus.COMPLETED)
+                )
+
+                totals_result = await session.execute(totals_query)
+                totals_row = totals_result.one()
+
+                # Get tax breakdown
+                tax_query = (
+                    select(
+                        ExtractedData.tax_rate,
+                        func.sum(ExtractedData.tax_amount).label("amount"),
+                    )
+                    .select_from(Invoice)
+                    .join(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+                    .where(
+                        Invoice.processing_status == ProcessingStatus.COMPLETED,
+                        ExtractedData.tax_rate.isnot(None),
+                        ExtractedData.tax_amount.isnot(None),
+                    )
+                    .group_by(ExtractedData.tax_rate)
+                    .order_by(func.sum(ExtractedData.tax_amount).desc())
+                )
+
+                tax_result = await session.execute(tax_query)
+                tax_rows = tax_result.all()
+
+                tax_breakdown = []
+                for row in tax_rows:
+                    if row.tax_rate and row.amount:
+                        tax_breakdown.append(
+                            {
+                                "rate": float(row.tax_rate),
+                                "amount": float(row.amount),
+                            }
+                        )
+
+                # Get currency distribution
+                currency_query = (
+                    select(
+                        ExtractedData.currency,
+                        func.count(func.distinct(Invoice.id)).label("count"),
+                    )
+                    .select_from(Invoice)
+                    .join(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+                    .where(
+                        Invoice.processing_status == ProcessingStatus.COMPLETED,
+                        ExtractedData.currency.isnot(None),
+                    )
+                    .group_by(ExtractedData.currency)
+                    .order_by(func.count(func.distinct(Invoice.id)).desc())
+                )
+
+                currency_result = await session.execute(currency_query)
+                currency_rows = currency_result.all()
+
+                currency_distribution = []
+                for row in currency_rows:
+                    currency_distribution.append(
+                        {
+                            "currency": row.currency,
+                            "count": row.count,
+                        }
+                    )
+
+                await session.commit()
+
+                return {
+                    "total_amount": float(totals_row.total_amount) if totals_row.total_amount else 0.0,
+                    "total_tax": float(totals_row.total_tax) if totals_row.total_tax else 0.0,
+                    "tax_breakdown": tax_breakdown,
+                    "currency_distribution": currency_distribution,
+                }
+            except Exception:
+                await session.rollback()
+                raise
+    finally:
         await engine.dispose()
 

@@ -210,11 +210,17 @@ class VendorSanityRule(ValidationRule):
 
     async def validate(self, extracted_data: ExtractedDataSchema) -> ValidationRuleResult:
         if not extracted_data.vendor_name or len(extracted_data.vendor_name.strip()) < 2:
+            error_msg = "Vendor name is missing or too short"
+            # Provide more context for Chinese invoices
+            if extracted_data.raw_text and any(
+                char in extracted_data.raw_text for char in ["销售方", "购买方", "增值税", "发票"]
+            ):
+                error_msg += ". For Chinese invoices, vendor_name should be extracted from 销售方 (seller), not 购买方 (buyer). Please reprocess the invoice if the seller name is visible in the document."
             return ValidationRuleResult(
                 rule_name=self.name,
                 rule_description=self.description,
                 status="failed",
-                error_message="Vendor name is missing or too short",
+                error_message=error_msg,
             )
 
         return ValidationRuleResult(

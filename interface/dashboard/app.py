@@ -1,14 +1,38 @@
 """Streamlit dashboard for reviewing processed invoices."""
 
-import streamlit as st
+from datetime import datetime
+
 import pandas as pd
+import streamlit as st
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from core.database import get_session
 from core.logging import configure_logging, get_logger
 from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult, ValidationStatus
-from interface.dashboard.queries import get_invoice_list, get_invoice_detail
+from interface.dashboard.queries import (
+    get_financial_summary_data,
+    get_invoice_detail,
+    get_invoice_list,
+    get_status_distribution,
+    get_time_series_data,
+    get_vendor_analysis_data,
+)
+from interface.dashboard.components.charts import (
+    create_financial_summary_charts,
+    create_status_distribution_chart,
+    create_time_series_chart,
+    create_vendor_analysis_chart,
+)
+from interface.dashboard.components.export_utils import (
+    export_invoice_detail_to_pdf,
+    export_invoice_list_to_csv,
+)
+from interface.dashboard.utils.data_formatters import (
+    enhance_validation_result,
+    format_missing_field,
+)
+from interface.dashboard.utils.path_resolver import resolve_file_path
 
 # Configure logging
 configure_logging(log_level="INFO", log_format="json")
@@ -89,6 +113,33 @@ def main():
             help="Filter by creation date"
         )
         
+        st.divider()
+        st.subheader("Advanced Filters")
+        
+        vendor_filter = st.text_input("Vendor Name", placeholder="Filter by vendor...", help="Partial match on vendor name")
+        
+        col_amount1, col_amount2 = st.columns(2)
+        with col_amount1:
+            amount_min = st.number_input("Min Amount", min_value=0.0, value=None, step=100.0, help="Minimum total amount")
+        with col_amount2:
+            amount_max = st.number_input("Max Amount", min_value=0.0, value=None, step=100.0, help="Maximum total amount")
+        
+        confidence_min = st.slider(
+            "Min Confidence",
+            min_value=0.0,
+            max_value=1.0,
+            value=None,
+            step=0.05,
+            help="Minimum extraction confidence (0.0-1.0)"
+        )
+        
+        validation_status_filter = st.selectbox(
+            "Validation Status",
+            ["All", "All Passed", "Has Failed", "Has Warning"],
+            index=0,
+            help="Filter by validation results"
+        )
+        
         if st.button("Reset All Filters"):
             st.rerun()
 
@@ -97,7 +148,25 @@ def main():
         st.session_state.selected_invoice_id = None
 
     with tab1:
-        selected_id = display_invoice_list(status_filter, search_query, date_range)
+        # Map validation status filter
+        validation_status_map = {
+            "All": None,
+            "All Passed": "all_passed",
+            "Has Failed": "has_failed",
+            "Has Warning": "has_warning",
+        }
+        validation_status = validation_status_map.get(validation_status_filter, None)
+        
+        selected_id = display_invoice_list(
+            status_filter,
+            search_query,
+            date_range,
+            vendor=vendor_filter if vendor_filter else None,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            confidence_min=confidence_min,
+            validation_status=validation_status,
+        )
         if selected_id:
             st.session_state.selected_invoice_id = selected_id
             # Switch to tab2 is handled via streamlit-native behavior if we use session_state properly
@@ -110,7 +179,16 @@ def main():
         display_invoice_detail(st.session_state.selected_invoice_id)
 
 
-def display_invoice_list(status_filter: str, search_query: str = None, date_range: tuple = None):
+def display_invoice_list(
+    status_filter: str,
+    search_query: str = None,
+    date_range: tuple = None,
+    vendor: str | None = None,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    confidence_min: float | None = None,
+    validation_status: str | None = None,
+):
     """Display list of processed invoices."""
     st.header("Processed Invoices")
 
@@ -131,7 +209,18 @@ def display_invoice_list(status_filter: str, search_query: str = None, date_rang
     try:
         # Use asyncio.run() which properly manages event loop lifecycle
         # This ensures clean state for each request
-        invoices = asyncio.run(get_invoice_list(status_enum, search_query, date_range))
+        invoices = asyncio.run(
+            get_invoice_list(
+                status_enum,
+                search_query,
+                date_range,
+                vendor=vendor,
+                amount_min=amount_min,
+                amount_max=amount_max,
+                confidence_min=confidence_min,
+                validation_status=validation_status,
+            )
+        )
     except Exception as e:
         st.error(f"Error loading invoices: {str(e)}")
         logger.error("Failed to load invoices", error=str(e), exc_info=True)
@@ -183,9 +272,189 @@ def display_invoice_list(status_filter: str, search_query: str = None, date_rang
 
     st.divider()
 
+    # Analytics Section
+    st.subheader("📊 Analytics")
+    
+    # Create tabs for different analytics views
+    analytics_tab1, analytics_tab2, analytics_tab3, analytics_tab4 = st.tabs([
+        "Status Distribution",
+        "Processing Trends",
+        "Vendor Analysis",
+        "Financial Summary"
+    ])
+    
+    with analytics_tab1:
+        try:
+            status_counts = asyncio.run(get_status_distribution())
+            if status_counts:
+                fig = create_status_distribution_chart(status_counts)
+                st.plotly_chart(fig, width='stretch')
+            else:
+                st.info("No status data available")
+        except Exception as e:
+            st.error(f"Error loading status distribution: {str(e)}")
+            logger.error("Failed to load status distribution", error=str(e), exc_info=True)
+    
+    with analytics_tab2:
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            aggregation = st.selectbox("Aggregation", ["daily", "weekly", "monthly"], key="time_series_agg")
+        try:
+            time_series = asyncio.run(get_time_series_data(aggregation=aggregation))
+            if time_series:
+                fig = create_time_series_chart(time_series, aggregation=aggregation)
+                st.plotly_chart(fig, width='stretch')
+            else:
+                st.info("No time series data available")
+        except Exception as e:
+            st.error(f"Error loading time series: {str(e)}")
+            logger.error("Failed to load time series", error=str(e), exc_info=True)
+    
+    with analytics_tab3:
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            sort_by = st.selectbox("Sort By", ["count", "amount"], key="vendor_sort")
+        with col2:
+            limit = st.slider("Top N Vendors", 5, 20, 10, key="vendor_limit")
+        try:
+            vendor_data = asyncio.run(get_vendor_analysis_data(sort_by=sort_by, limit=limit))
+            if vendor_data:
+                fig = create_vendor_analysis_chart(vendor_data, sort_by=sort_by, limit=limit)
+                st.plotly_chart(fig, width='stretch')
+            else:
+                st.info("No vendor data available")
+        except Exception as e:
+            st.error(f"Error loading vendor analysis: {str(e)}")
+            logger.error("Failed to load vendor analysis", error=str(e), exc_info=True)
+    
+    with analytics_tab4:
+        try:
+            financial_data = asyncio.run(get_financial_summary_data())
+            if financial_data:
+                total_fig, tax_fig, currency_fig = create_financial_summary_charts(
+                    total_amount=financial_data.get("total_amount", 0.0),
+                    tax_breakdown=financial_data.get("tax_breakdown"),
+                    currency_distribution=financial_data.get("currency_distribution"),
+                )
+                
+                st.plotly_chart(total_fig, width='stretch')
+                
+                col1, col2 = st.columns(2)
+                if tax_fig:
+                    with col1:
+                        st.plotly_chart(tax_fig, width='stretch')
+                if currency_fig:
+                    with col2:
+                        st.plotly_chart(currency_fig, width='stretch')
+            else:
+                st.info("No financial data available")
+        except Exception as e:
+            st.error(f"Error loading financial summary: {str(e)}")
+            logger.error("Failed to load financial summary", error=str(e), exc_info=True)
+    
+    st.divider()
+
     if not invoices:
         st.info(f"No invoices found matching your criteria.")
         return
+
+    # Export button
+    col_export1, col_export2 = st.columns([1, 10])
+    with col_export1:
+        try:
+            # Prepare invoice data for export
+            export_data = []
+            for invoice in invoices:
+                extracted = invoice.extracted_data
+                export_data.append({
+                    "invoice_id": str(invoice.id),
+                    "file_name": invoice.file_name,
+                    "processing_status": get_status_value(invoice.processing_status),
+                    "vendor_name": extracted.vendor_name if extracted else None,
+                    "total_amount": float(extracted.total_amount) if extracted and extracted.total_amount else None,
+                    "currency": extracted.currency if extracted else None,
+                    "invoice_date": extracted.invoice_date if extracted else None,
+                    "created_at": invoice.created_at,
+                })
+            
+            csv_bytes = export_invoice_list_to_csv(export_data)
+            st.download_button(
+                label="📥 Export to CSV",
+                data=csv_bytes,
+                file_name=f"invoices_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                help="Export filtered invoice list to CSV file",
+            )
+        except Exception as e:
+            st.error(f"Error preparing CSV export: {str(e)}")
+            logger.error("Failed to prepare CSV export", error=str(e), exc_info=True)
+
+    # Bulk Actions
+    st.subheader("⚡ Bulk Actions")
+    bulk_col1, bulk_col2, bulk_col3 = st.columns([2, 1, 1])
+    
+    with bulk_col1:
+        # Create list of invoice options for bulk selection
+        invoice_options = {
+            f"{inv.file_name} ({str(inv.id)[:8]}...)": str(inv.id)
+            for inv in invoices
+        }
+        selected_invoices = st.multiselect(
+            "Select Invoices for Bulk Action",
+            options=list(invoice_options.keys()),
+            help="Select multiple invoices to perform bulk operations",
+        )
+    
+    with bulk_col2:
+        force_reprocess = st.checkbox("Force Reprocess", value=False, help="Force reprocessing even if already completed")
+    
+    with bulk_col3:
+        if st.button("🔄 Bulk Reprocess", disabled=len(selected_invoices) == 0, type="primary"):
+            if selected_invoices:
+                # Get invoice IDs from selected options
+                invoice_ids = [invoice_options[opt] for opt in selected_invoices]
+                
+                # Call bulk reprocess API
+                import httpx
+                try:
+                    with st.spinner(f"Reprocessing {len(invoice_ids)} invoice(s)..."):
+                        async def bulk_reprocess():
+                            async with httpx.AsyncClient(timeout=300.0) as client:
+                                response = await client.post(
+                                    "http://localhost:8000/api/v1/invoices/bulk/reprocess",
+                                    json={
+                                        "invoice_ids": invoice_ids,
+                                        "force_reprocess": force_reprocess,
+                                    },
+                                )
+                                response.raise_for_status()
+                                return response.json()
+                        
+                        result = asyncio.run(bulk_reprocess())
+                        
+                        if result.get("status") == "success":
+                            st.success(
+                                f"✅ Bulk reprocess initiated: "
+                                f"{result.get('successful', 0)} successful, "
+                                f"{result.get('failed', 0)} failed, "
+                                f"{result.get('skipped', 0)} skipped"
+                            )
+                            # Show detailed results
+                            if result.get("results"):
+                                with st.expander("View Detailed Results"):
+                                    for item in result["results"]:
+                                        status_icon = "✅" if item["status"] == "success" else "❌" if item["status"] == "failed" else "⏭️"
+                                        st.write(f"{status_icon} {item['invoice_id'][:8]}... - {item['status']}: {item.get('message', '')}")
+                            st.rerun()
+                        else:
+                            st.error(f"Bulk reprocess failed: {result.get('error', 'Unknown error')}")
+                except httpx.HTTPStatusError as e:
+                    st.error(f"API error: {e.response.status_code} - {e.response.text}")
+                except Exception as e:
+                    st.error(f"Error during bulk reprocess: {str(e)}")
+                    logger.error("Bulk reprocess failed", error=str(e), exc_info=True)
+    
+    st.divider()
 
     # Display invoices in an enhanced table
     invoice_data = []
@@ -299,7 +568,7 @@ def display_invoice_list(status_filter: str, search_query: str = None, date_rang
     # Use st.dataframe with better formatting and selection
     event = st.dataframe(
         df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
@@ -361,6 +630,9 @@ def display_invoice_list(status_filter: str, search_query: str = None, date_rang
 def display_invoice_detail(preselected_id: str = None):
     """Display detailed invoice information."""
     st.header("Invoice Detail")
+    
+    # Export button (will be enabled after invoice is loaded)
+    export_col1, export_col2 = st.columns([1, 10])
     
     # Initialize session state for invoice filtering if it doesn't exist
     if "detail_invoice_id" not in st.session_state:
@@ -468,6 +740,21 @@ def display_invoice_detail(preselected_id: str = None):
             st.warning("⚠️ Invoice not found. Please check the Invoice ID and try again.")
             return
 
+        # PDF Export button
+        with export_col1:
+            try:
+                pdf_bytes = export_invoice_detail_to_pdf(invoice_detail)
+                st.download_button(
+                    label="📥 Export PDF",
+                    data=pdf_bytes,
+                    file_name=f"invoice_{invoice_detail.get('invoice_id', 'detail')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf",
+                    help="Export invoice detail to PDF file",
+                )
+            except Exception as e:
+                st.error(f"Error preparing PDF export: {str(e)}")
+                logger.error("Failed to prepare PDF export", error=str(e), exc_info=True)
+
         # Display invoice information
         col1, col2, col3 = st.columns([1, 1, 1.5])
 
@@ -495,22 +782,36 @@ def display_invoice_detail(preselected_id: str = None):
         with col3:
             st.subheader("📄 File Preview")
             file_path = invoice_detail.get("file_path")
+            file_hash = invoice_detail.get("file_hash")
             file_type = invoice_detail.get("file_type", "").lower()
             
             if file_path:
-                import os
-                if os.path.exists(file_path):
+                # Use path resolver to find file in data/ or data/encrypted/
+                resolved = resolve_file_path(file_path, file_hash=file_hash, data_dir="data")
+                
+                if resolved["exists"] and resolved["resolved_path"]:
+                    resolved_path = resolved["resolved_path"]
                     if file_type in ["jpg", "jpeg", "png"]:
-                        st.image(file_path, use_container_width=True, caption=invoice_detail['file_name'])
+                        st.image(str(resolved_path), width='stretch', caption=invoice_detail['file_name'])
+                        if resolved["location"] == "encrypted":
+                            st.caption(f"📍 File location: Encrypted storage")
                     elif file_type == "pdf":
                         st.info("📂 PDF Preview not available in this view. Please refer to local file.")
-                        st.caption(f"Path: `{file_path}`")
+                        st.caption(f"Path: `{resolved_path}`")
+                        if resolved["location"] == "encrypted":
+                            st.caption(f"📍 File location: Encrypted storage")
                     else:
                         st.info(f"📄 {file_type.upper()} File")
-                        st.caption(f"Path: `{file_path}`")
+                        st.caption(f"Path: `{resolved_path}`")
+                        if resolved["location"] == "encrypted":
+                            st.caption(f"📍 File location: Encrypted storage")
                 else:
-                    st.warning("⚠️ Source file not found on disk")
+                    st.warning("⚠️ **Source file not found on disk**")
                     st.caption(f"Expected at: `{file_path}`")
+                    if resolved.get("error"):
+                        st.caption(f"💡 {resolved['error']}")
+                    if file_hash:
+                        st.caption(f"💡 Also checked encrypted location with hash: `{file_hash[:8]}...`")
 
         # Display extracted data
         if invoice_detail.get("extracted_data"):
@@ -593,7 +894,7 @@ def display_invoice_detail(preselected_id: str = None):
                                 "Amount": f"{currency} {item.get('amount', 0):,.2f}" if item.get("amount") else "—",
                             })
                     if line_items_data:
-                        st.dataframe(pd.DataFrame(line_items_data), use_container_width=True, hide_index=True)
+                        st.dataframe(pd.DataFrame(line_items_data), width='stretch', hide_index=True)
                 else:
                     st.info("No line items available")
             
@@ -630,31 +931,45 @@ def display_invoice_detail(preselected_id: str = None):
             if failed_list:
                 st.markdown("### ❌ Failed Rules")
                 for result in failed_list:
-                    render_validation_item(result)
+                    enhanced = enhance_validation_result(result)
+                    render_validation_item(enhanced)
             
             # Display Warning Rules
             if warning_list:
                 st.markdown("### ⚠️ Warnings")
                 for result in warning_list:
-                    render_validation_item(result)
+                    enhanced = enhance_validation_result(result)
+                    render_validation_item(enhanced)
             
             # Display Passed Rules (collapsed)
             if passed_list:
                 with st.expander(f"✅ View {len(passed_list)} Passed Rules"):
                     for result in passed_list:
-                        render_validation_item(result)
+                        enhanced = enhance_validation_result(result)
+                        render_validation_item(enhanced)
         else:
             st.info("ℹ️ No validation results available. The invoice may still be processing.")
 
 
 def render_validation_item(result):
-    """Helper to render a validation result item."""
+    """Helper to render a validation result item with enhanced display."""
     status = result.get("status", "").lower()
     rule_name = result.get("rule_name", "Unknown Rule")
     rule_desc = result.get("rule_description", "")
+    severity = result.get("severity", "medium")
+    actionable = result.get("actionable", False)
+    suggested_action = result.get("suggested_action")
     
-    # Emoji based on status
-    status_emoji = '✅' if status == 'passed' else '❌' if status == 'failed' else '⚠️'
+    # Emoji based on status and severity
+    if status == 'passed':
+        status_emoji = '✅'
+        border_color = "green"
+    elif status == 'failed':
+        status_emoji = '❌'
+        border_color = "red" if severity == "high" else "orange"
+    else:
+        status_emoji = '⚠️'
+        border_color = "yellow"
     
     with st.container(border=True):
         col1, col2 = st.columns([3, 1])
@@ -662,6 +977,9 @@ def render_validation_item(result):
             st.markdown(f"**{status_emoji} {rule_name}**")
             if rule_desc:
                 st.caption(rule_desc)
+            if severity:
+                severity_badge = f"🔴 High" if severity == "high" else f"🟡 Medium" if severity == "medium" else f"🟢 Low"
+                st.caption(f"Severity: {severity_badge}")
         with col2:
             validated_at = result.get("validated_at")
             if validated_at:
@@ -673,7 +991,16 @@ def render_validation_item(result):
         # Details
         error_msg = result.get("error_message")
         if error_msg:
-            st.error(error_msg)
+            if status == 'failed':
+                st.error(error_msg)
+            elif status == 'warning':
+                st.warning(error_msg)
+            else:
+                st.info(error_msg)
+        
+        # Show suggested action if available
+        if actionable and suggested_action:
+            st.info(f"💡 **Suggested Action:** {suggested_action}")
         
         expected = result.get("expected_value")
         actual = result.get("actual_value")

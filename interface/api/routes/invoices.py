@@ -13,6 +13,9 @@ from core.logging import get_logger
 from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult
 from ingestion.orchestrator import process_invoice_file
 from interface.api.schemas import (
+    BulkActionItem,
+    BulkActionResponse,
+    BulkReprocessRequest,
     InvoiceDetailResponse,
     InvoiceListResponse,
     InvoiceSummary,
@@ -252,4 +255,137 @@ async def process_invoice(
         await session.rollback()
         logger.error("Invoice processing failed", file_path=str(file_path), error=str(e))
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@router.post("/bulk/reprocess", response_model=BulkActionResponse)
+async def bulk_reprocess_invoices(
+    request: BulkReprocessRequest,
+    session: AsyncSession = Depends(get_session),
+) -> BulkActionResponse:
+    """Reprocess multiple invoices in bulk.
+
+    Args:
+        request: Bulk reprocess request with invoice IDs
+        session: Database session
+
+    Returns:
+        Bulk action response with results for each invoice
+    """
+    results: list[BulkActionItem] = []
+    successful = 0
+    failed = 0
+    skipped = 0
+
+    for invoice_id_str in request.invoice_ids:
+        try:
+            invoice_id = uuid.UUID(invoice_id_str)
+        except ValueError:
+            results.append(
+                BulkActionItem(
+                    invoice_id=invoice_id_str,
+                    status="failed",
+                    message="Invalid UUID format",
+                )
+            )
+            failed += 1
+            continue
+
+        try:
+            # Get invoice
+            invoice_query = select(Invoice).where(Invoice.id == invoice_id)
+            invoice_result = await session.execute(invoice_query)
+            invoice = invoice_result.scalar_one_or_none()
+
+            if not invoice:
+                results.append(
+                    BulkActionItem(
+                        invoice_id=invoice_id_str,
+                        status="skipped",
+                        message="Invoice not found",
+                    )
+                )
+                skipped += 1
+                continue
+
+            # Check if already processing
+            if invoice.processing_status == ProcessingStatus.PROCESSING:
+                results.append(
+                    BulkActionItem(
+                        invoice_id=invoice_id_str,
+                        status="skipped",
+                        message="Invoice is already being processed",
+                    )
+                )
+                skipped += 1
+                continue
+
+            # Check if already processed and not forcing
+            if (
+                not request.force_reprocess
+                and invoice.processing_status == ProcessingStatus.COMPLETED
+            ):
+                results.append(
+                    BulkActionItem(
+                        invoice_id=invoice_id_str,
+                        status="skipped",
+                        message="Invoice already processed (use force_reprocess=true to override)",
+                    )
+                )
+                skipped += 1
+                continue
+
+            # Reprocess invoice
+            file_path = Path("data") / invoice.file_path
+            if not file_path.exists():
+                results.append(
+                    BulkActionItem(
+                        invoice_id=invoice_id_str,
+                        status="failed",
+                        message=f"File not found: {file_path}",
+                    )
+                )
+                failed += 1
+                continue
+
+            # Create processing job
+            job = await process_invoice_file(
+                file_path=file_path,
+                session=session,
+                force_reprocess=request.force_reprocess,
+            )
+
+            results.append(
+                BulkActionItem(
+                    invoice_id=invoice_id_str,
+                    status="success",
+                    message=f"Reprocessing job created: {job.id}",
+                )
+            )
+            successful += 1
+
+        except Exception as e:
+            logger.error(
+                "Bulk reprocess failed for invoice",
+                invoice_id=invoice_id_str,
+                error=str(e),
+            )
+            results.append(
+                BulkActionItem(
+                    invoice_id=invoice_id_str,
+                    status="failed",
+                    message=f"Error: {str(e)}",
+                )
+            )
+            failed += 1
+
+    await session.commit()
+
+    return BulkActionResponse(
+        status="success",
+        total_requested=len(request.invoice_ids),
+        successful=successful,
+        failed=failed,
+        skipped=skipped,
+        results=results,
+    )
 

@@ -1,0 +1,321 @@
+openapi: 3.0.3
+info:
+  title: Dashboard Improvements API
+  version: 1.0.0
+  description: API endpoints for dashboard improvements including bulk actions and enhanced queries
+
+paths:
+  /api/v1/invoices/bulk/reprocess:
+    post:
+      summary: Bulk reprocess invoices
+      description: Queue multiple invoices for reprocessing
+      operationId: bulkReprocessInvoices
+      tags:
+        - Bulk Actions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkReprocessRequest'
+      responses:
+        '202':
+          description: Bulk reprocess request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkActionResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/analytics/status-distribution:
+    get:
+      summary: Get status distribution for charts
+      description: Returns aggregated status counts for visualization
+      operationId: getStatusDistribution
+      tags:
+        - Analytics
+      responses:
+        '200':
+          description: Status distribution data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusDistributionResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/analytics/time-series:
+    get:
+      summary: Get time series data for charts
+      description: Returns processing volume trends over time
+      operationId: getTimeSeries
+      tags:
+        - Analytics
+      parameters:
+        - name: aggregation
+          in: query
+          description: Time aggregation (daily, weekly, monthly)
+          required: false
+          schema:
+            type: string
+            enum: [daily, weekly, monthly]
+            default: daily
+        - name: start_date
+          in: query
+          description: Start date (ISO format)
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          description: End date (ISO format)
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Time series data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeSeriesResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/analytics/vendor-analysis:
+    get:
+      summary: Get vendor analysis data for charts
+      description: Returns top vendors by invoice count or total amount
+      operationId: getVendorAnalysis
+      tags:
+        - Analytics
+      parameters:
+        - name: sort_by
+          in: query
+          description: Sort by count or amount
+          required: false
+          schema:
+            type: string
+            enum: [count, amount]
+            default: count
+        - name: limit
+          in: query
+          description: Number of top vendors to return
+          required: false
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: Vendor analysis data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorAnalysisResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/analytics/financial-summary:
+    get:
+      summary: Get financial summary for charts
+      description: Returns aggregated financial data including totals, tax breakdown, currency distribution
+      operationId: getFinancialSummary
+      tags:
+        - Analytics
+      responses:
+        '200':
+          description: Financial summary data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialSummaryResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    BulkReprocessRequest:
+      type: object
+      required:
+        - invoice_ids
+      properties:
+        invoice_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of invoice IDs to reprocess (max 100)
+          maxItems: 100
+        force:
+          type: boolean
+          description: Force reprocessing (reset version to 1)
+          default: false
+      example:
+        invoice_ids:
+          - "123e4567-e89b-12d3-a456-426614174000"
+          - "223e4567-e89b-12d3-a456-426614174001"
+        force: false
+
+    BulkActionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+        data:
+          type: object
+          properties:
+            job_id:
+              type: string
+              format: uuid
+            invoice_count:
+              type: integer
+            queued_count:
+              type: integer
+            failed_count:
+              type: integer
+            message:
+              type: string
+
+    StatusDistributionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            distribution:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+
+    TimeSeriesResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            series:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  count:
+                    type: integer
+            aggregation:
+              type: string
+              enum: [daily, weekly, monthly]
+
+    VendorAnalysisResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            vendors:
+              type: array
+              items:
+                type: object
+                properties:
+                  vendor:
+                    type: string
+                  invoice_count:
+                    type: integer
+                  total_amount:
+                    type: number
+                    format: float
+
+    FinancialSummaryResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          properties:
+            total_amount:
+              type: number
+              format: float
+            total_tax:
+              type: number
+              format: float
+            tax_breakdown:
+              type: array
+              items:
+                type: object
+                properties:
+                  rate:
+                    type: number
+                    format: float
+                  amount:
+                    type: number
+                    format: float
+            currency_distribution:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency:
+                    type: string
+                  count:
+                    type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+        detail:
+          type: string
+

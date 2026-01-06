@@ -148,6 +148,32 @@ class InvoiceDetailResponse(ApiResponse):
     data: InvoiceDetail
 
 
+# Bulk operation schemas
+class BulkReprocessRequest(BaseModel):
+    """Request to reprocess multiple invoices."""
+
+    invoice_ids: list[str] = Field(..., description="List of invoice UUIDs to reprocess", min_items=1)
+    force_reprocess: bool = Field(False, description="Force reprocessing even if already processed")
+
+
+class BulkActionItem(BaseModel):
+    """Result for a single item in bulk action."""
+
+    invoice_id: str = Field(..., description="Invoice UUID")
+    status: str = Field(..., description="Action status", examples=["success", "failed", "skipped"])
+    message: str | None = Field(None, description="Status message or error")
+
+
+class BulkActionResponse(ApiResponse):
+    """Response for bulk action endpoint."""
+
+    total_requested: int = Field(..., description="Total number of invoices requested")
+    successful: int = Field(..., description="Number of successful actions")
+    failed: int = Field(..., description="Number of failed actions")
+    skipped: int = Field(..., description="Number of skipped actions")
+    results: list[BulkActionItem] = Field(..., description="Detailed results for each invoice")
+
+
 class ProcessInvoiceData(BaseModel):
     """Data in process invoice response."""
 
