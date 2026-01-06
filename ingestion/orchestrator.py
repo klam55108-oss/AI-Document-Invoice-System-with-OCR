@@ -24,7 +24,11 @@ logger = get_logger(__name__)
 
 
 async def process_invoice_file(
-    file_path: Path, data_dir: Path, session: AsyncSession, force_reprocess: bool = False
+    file_path: Path,
+    data_dir: Path,
+    session: AsyncSession,
+    force_reprocess: bool = False,
+    upload_metadata: dict | None = None,
 ) -> Invoice:
     """Process an invoice file end-to-end.
 
@@ -33,6 +37,7 @@ async def process_invoice_file(
         data_dir: Base data directory
         session: Database session
         force_reprocess: Force reprocessing even if file hash exists
+        upload_metadata: Optional metadata about the upload (subfolder, group, category, etc.)
 
     Returns:
         Invoice model instance
@@ -100,6 +105,7 @@ async def process_invoice_file(
         version=version,
         processing_status=ProcessingStatus.PROCESSING,
         encrypted_file_path=encrypted_file_path,
+        upload_metadata=upload_metadata,
     )
 
     session.add(invoice)

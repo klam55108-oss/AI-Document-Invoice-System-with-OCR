@@ -177,7 +177,11 @@ async def get_invoice(
         for vr in validation_results
     ]
 
-    from interface.api.schemas import InvoiceDetail
+    from interface.api.schemas import InvoiceDetail, UploadMetadata
+
+    upload_metadata_response = None
+    if invoice.upload_metadata:
+        upload_metadata_response = UploadMetadata(**invoice.upload_metadata)
 
     invoice_detail = InvoiceDetail(
         id=str(invoice.id),
@@ -191,6 +195,7 @@ async def get_invoice(
         updated_at=invoice.updated_at,
         processed_at=invoice.processed_at,
         error_message=invoice.error_message,
+        upload_metadata=upload_metadata_response,
         extracted_data=extracted_response,
         validation_results=validation_responses,
     )

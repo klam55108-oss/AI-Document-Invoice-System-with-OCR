@@ -90,6 +90,7 @@ class Invoice(Base):
         DateTime(timezone=True), nullable=True
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upload_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     extracted_data: Mapped["ExtractedData | None"] = relationship(

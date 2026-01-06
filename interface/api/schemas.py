@@ -124,6 +124,17 @@ class ValidationResultResponse(BaseModel):
     validated_at: datetime
 
 
+# Upload schemas (defined before InvoiceDetail to avoid forward reference)
+class UploadMetadata(BaseModel):
+    """Upload metadata structure."""
+
+    subfolder: str = Field(..., description="Subfolder within data/ directory")
+    group: str | None = Field(None, description="Group/batch identifier")
+    category: str | None = Field(None, description="Category for organizing uploads")
+    upload_source: str = Field(..., description="Source of upload", examples=["web-ui", "data-folder"])
+    uploaded_at: datetime | None = Field(None, description="Upload timestamp")
+
+
 class InvoiceDetail(BaseModel):
     """Detailed invoice information."""
 
@@ -138,6 +149,7 @@ class InvoiceDetail(BaseModel):
     updated_at: datetime
     processed_at: datetime | None = None
     error_message: str | None = None
+    upload_metadata: UploadMetadata | None = None
     extracted_data: ExtractedDataResponse | None = None
     validation_results: list[ValidationResultResponse] = Field(default_factory=list)
 
@@ -186,4 +198,48 @@ class ProcessInvoiceResponse(ApiResponse):
     """Response for process invoice endpoint."""
 
     data: ProcessInvoiceData
+
+
+class UploadItem(BaseModel):
+    """Individual file upload result."""
+
+    file_name: str = Field(..., description="Original filename")
+    invoice_id: str | None = Field(None, description="Invoice ID if processing started")
+    status: str = Field(..., description="Current status", examples=["uploaded", "processing", "completed", "failed", "duplicate"])
+    file_path: str | None = Field(None, description="Relative path from data/ directory")
+    file_size: int | None = Field(None, description="File size in bytes")
+    error_message: str | None = Field(None, description="Error message if upload failed")
+
+
+class UploadData(BaseModel):
+    """Data in upload response."""
+
+    uploads: list[UploadItem] = Field(..., description="List of upload results")
+    total: int = Field(..., description="Total number of files uploaded")
+    successful: int = Field(..., description="Number of successfully uploaded files")
+    failed: int = Field(..., description="Number of failed uploads")
+    skipped: int = Field(..., description="Number of skipped files (duplicates)")
+
+
+class UploadResponse(ApiResponse):
+    """Response for upload endpoint."""
+
+    data: UploadData
+
+
+class UploadStatusData(BaseModel):
+    """Data in upload status response."""
+
+    invoice_id: str = Field(..., description="Invoice UUID")
+    file_name: str = Field(..., description="Original filename")
+    file_path: str | None = Field(None, description="Relative path from data/ directory")
+    processing_status: str = Field(..., description="Processing status")
+    upload_metadata: UploadMetadata | None = Field(None, description="Upload metadata")
+    error_message: str | None = Field(None, description="Error message if processing failed")
+
+
+class UploadStatusResponse(ApiResponse):
+    """Response for upload status endpoint."""
+
+    data: UploadStatusData
 

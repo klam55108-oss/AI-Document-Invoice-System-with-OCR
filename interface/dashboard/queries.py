@@ -272,6 +272,7 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
                     "updated_at": invoice.updated_at,
                     "processed_at": invoice.processed_at,
                     "error_message": invoice.error_message,
+                    "upload_metadata": invoice.upload_metadata,
                 }
 
                 if extracted_data:

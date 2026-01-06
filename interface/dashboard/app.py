@@ -93,7 +93,7 @@ def main():
     init_db_connection()
 
     # Main content
-    tab1, tab2 = st.tabs(["Invoice List", "Invoice Detail"])
+    tab1, tab2, tab3 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files"])
 
     # Sidebar filters
     with st.sidebar:
@@ -177,6 +177,10 @@ def main():
 
     with tab2:
         display_invoice_detail(st.session_state.selected_invoice_id)
+
+    with tab3:
+        from interface.dashboard.components.upload import render_upload_ui
+        render_upload_ui()
 
 
 def display_invoice_list(
@@ -764,6 +768,23 @@ def display_invoice_detail(preselected_id: str = None):
             st.write(f"**Type:** {invoice_detail['file_type'].upper()}")
             st.write(f"**Version:** {invoice_detail['version']}")
             st.write(f"**Created:** {invoice_detail['created_at'].strftime('%Y-%m-%d %H:%M') if invoice_detail['created_at'] else '—'}")
+            
+            # Display upload metadata if available
+            upload_metadata = invoice_detail.get("upload_metadata")
+            if upload_metadata:
+                st.divider()
+                st.markdown("#### 📤 Upload Information")
+                if upload_metadata.get("subfolder"):
+                    st.caption(f"**Source Folder:** {upload_metadata['subfolder']}")
+                if upload_metadata.get("group"):
+                    st.caption(f"**Upload Group:** {upload_metadata['group']}")
+                if upload_metadata.get("category"):
+                    st.caption(f"**Category:** {upload_metadata['category']}")
+                if upload_metadata.get("upload_source"):
+                    source_emoji = "🌐" if upload_metadata['upload_source'] == "web-ui" else "📁"
+                    st.caption(f"**Upload Source:** {source_emoji} {upload_metadata['upload_source']}")
+                if upload_metadata.get("uploaded_at"):
+                    st.caption(f"**Uploaded At:** {upload_metadata['uploaded_at']}")
 
         with col2:
             st.subheader("Processing")
@@ -785,6 +806,11 @@ def display_invoice_detail(preselected_id: str = None):
             file_hash = invoice_detail.get("file_hash")
             file_type = invoice_detail.get("file_type", "").lower()
             
+            # Initialize session state for image modal
+            image_modal_key = f"image_modal_{invoice_detail.get('id', 'default')}"
+            if image_modal_key not in st.session_state:
+                st.session_state[image_modal_key] = False
+            
             if file_path:
                 # Use path resolver to find file in data/ or data/encrypted/
                 resolved = resolve_file_path(file_path, file_hash=file_hash, data_dir="data")
@@ -792,9 +818,24 @@ def display_invoice_detail(preselected_id: str = None):
                 if resolved["exists"] and resolved["resolved_path"]:
                     resolved_path = resolved["resolved_path"]
                     if file_type in ["jpg", "jpeg", "png"]:
-                        st.image(str(resolved_path), width='stretch', caption=invoice_detail['file_name'])
-                        if resolved["location"] == "encrypted":
-                            st.caption(f"📍 File location: Encrypted storage")
+                        # Display thumbnail in a container
+                        with st.container():
+                            # Thumbnail with click to view button
+                            col_thumb1, col_thumb2 = st.columns([3, 1])
+                            with col_thumb1:
+                                st.image(
+                                    str(resolved_path),
+                                    width=200,  # Fixed thumbnail size
+                                    caption=invoice_detail['file_name'],
+                                )
+                            with col_thumb2:
+                                st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+                                if st.button("🔍 Full Size", key=f"view_full_{invoice_detail.get('id', 'default')}", width='stretch'):
+                                    st.session_state[image_modal_key] = True
+                                    st.rerun()
+                            
+                            if resolved["location"] == "encrypted":
+                                st.caption(f"📍 File location: Encrypted storage")
                     elif file_type == "pdf":
                         st.info("📂 PDF Preview not available in this view. Please refer to local file.")
                         st.caption(f"Path: `{resolved_path}`")
@@ -812,6 +853,29 @@ def display_invoice_detail(preselected_id: str = None):
                         st.caption(f"💡 {resolved['error']}")
                     if file_hash:
                         st.caption(f"💡 Also checked encrypted location with hash: `{file_hash[:8]}...`")
+        
+        # Full-size image modal/popup (outside columns for full width)
+        if file_path and file_type in ["jpg", "jpeg", "png"]:
+            resolved = resolve_file_path(file_path, file_hash=file_hash, data_dir="data")
+            if resolved["exists"] and resolved["resolved_path"] and st.session_state[image_modal_key]:
+                st.markdown("---")
+                with st.container(border=True):
+                    # Modal header with close button
+                    col_modal1, col_modal2 = st.columns([10, 1])
+                    with col_modal1:
+                        st.markdown(f"### 🔍 Full Size Image: {invoice_detail['file_name']}")
+                    with col_modal2:
+                        if st.button("✕ Close", key=f"close_modal_{invoice_detail.get('id', 'default')}", width='stretch'):
+                            st.session_state[image_modal_key] = False
+                            st.rerun()
+                    
+                    # Full-size image
+                    st.image(
+                        str(resolved["resolved_path"]),
+                        caption=invoice_detail['file_name'],
+                        width='stretch',
+                    )
+                st.markdown("---")
 
         # Display extracted data
         if invoice_detail.get("extracted_data"):
@@ -931,21 +995,45 @@ def display_invoice_detail(preselected_id: str = None):
             if failed_list:
                 st.markdown("### ❌ Failed Rules")
                 for result in failed_list:
-                    enhanced = enhance_validation_result(result)
+                    enhanced = enhance_validation_result(
+                        rule_name=result.get("rule_name", "Unknown Rule"),
+                        rule_description=result.get("rule_description"),
+                        status=result.get("status", "failed"),
+                        expected_value=result.get("expected_value"),
+                        actual_value=result.get("actual_value"),
+                        tolerance=result.get("tolerance"),
+                        error_message=result.get("error_message"),
+                    )
                     render_validation_item(enhanced)
             
             # Display Warning Rules
             if warning_list:
                 st.markdown("### ⚠️ Warnings")
                 for result in warning_list:
-                    enhanced = enhance_validation_result(result)
+                    enhanced = enhance_validation_result(
+                        rule_name=result.get("rule_name", "Unknown Rule"),
+                        rule_description=result.get("rule_description"),
+                        status=result.get("status", "warning"),
+                        expected_value=result.get("expected_value"),
+                        actual_value=result.get("actual_value"),
+                        tolerance=result.get("tolerance"),
+                        error_message=result.get("error_message"),
+                    )
                     render_validation_item(enhanced)
             
             # Display Passed Rules (collapsed)
             if passed_list:
                 with st.expander(f"✅ View {len(passed_list)} Passed Rules"):
                     for result in passed_list:
-                        enhanced = enhance_validation_result(result)
+                        enhanced = enhance_validation_result(
+                            rule_name=result.get("rule_name", "Unknown Rule"),
+                            rule_description=result.get("rule_description"),
+                            status=result.get("status", "passed"),
+                            expected_value=result.get("expected_value"),
+                            actual_value=result.get("actual_value"),
+                            tolerance=result.get("tolerance"),
+                            error_message=result.get("error_message"),
+                        )
                         render_validation_item(enhanced)
         else:
             st.info("ℹ️ No validation results available. The invoice may still be processing.")

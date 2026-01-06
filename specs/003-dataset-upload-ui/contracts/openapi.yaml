@@ -1,0 +1,265 @@
+openapi: 3.0.3
+info:
+  title: Dataset Upload UI API
+  version: 1.0.0
+  description: API endpoints for file upload functionality
+
+paths:
+  /api/v1/uploads:
+    post:
+      summary: Upload invoice file(s)
+      description: Upload one or more invoice files for processing. Files are validated, stored, and automatically processed.
+      operationId: uploadFiles
+      tags:
+        - Uploads
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: One or more invoice files to upload
+                subfolder:
+                  type: string
+                  description: Subfolder within data/ directory (default: "uploads")
+                  example: "uploads"
+                group:
+                  type: string
+                  description: Group/batch identifier for organizing related uploads
+                  example: "batch-2026-01-05"
+                category:
+                  type: string
+                  description: Category for organizing uploads
+                  example: "monthly-invoices"
+                force_reprocess:
+                  type: boolean
+                  description: Force reprocessing even if file hash exists (default: false)
+                  default: false
+      responses:
+        '202':
+          description: Upload accepted, processing started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid request (unsupported file type, file too large, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/uploads/{upload_id}/status:
+    get:
+      summary: Get upload status
+      description: Get the current status of an upload and its processing
+      operationId: getUploadStatus
+      tags:
+        - Uploads
+      parameters:
+        - name: upload_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Upload session ID or invoice ID
+      responses:
+        '200':
+          description: Upload status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadStatusResponse'
+        '404':
+          description: Upload not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    UploadResponse:
+      type: object
+      required:
+        - status
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success]
+          example: "success"
+        timestamp:
+          type: string
+          format: date-time
+          description: Response timestamp
+        data:
+          type: object
+          required:
+            - uploads
+          properties:
+            uploads:
+              type: array
+              items:
+                $ref: '#/components/schemas/UploadItem'
+            total:
+              type: integer
+              description: Total number of files uploaded
+              example: 3
+            successful:
+              type: integer
+              description: Number of successfully uploaded files
+              example: 2
+            failed:
+              type: integer
+              description: Number of failed uploads
+              example: 1
+            skipped:
+              type: integer
+              description: Number of skipped files (duplicates)
+              example: 0
+
+    UploadItem:
+      type: object
+      required:
+        - file_name
+        - status
+      properties:
+        file_name:
+          type: string
+          description: Original filename
+          example: "invoice-1.pdf"
+        invoice_id:
+          type: string
+          format: uuid
+          description: Invoice ID (if processing started)
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        status:
+          type: string
+          enum: [uploaded, processing, completed, failed, duplicate]
+          description: Current status of the upload
+          example: "processing"
+        file_path:
+          type: string
+          description: Relative path from data/ directory
+          example: "uploads/invoice-1.pdf"
+        file_size:
+          type: integer
+          description: File size in bytes
+          example: 1048576
+        error_message:
+          type: string
+          description: Error message if upload failed
+          nullable: true
+          example: "File type not supported"
+
+    UploadStatusResponse:
+      type: object
+      required:
+        - status
+        - data
+      properties:
+        status:
+          type: string
+          enum: [success]
+        data:
+          type: object
+          required:
+            - invoice_id
+            - file_name
+            - processing_status
+          properties:
+            invoice_id:
+              type: string
+              format: uuid
+            file_name:
+              type: string
+            file_path:
+              type: string
+            processing_status:
+              type: string
+              enum: [pending, queued, processing, completed, failed]
+            upload_metadata:
+              $ref: '#/components/schemas/UploadMetadata'
+            error_message:
+              type: string
+              nullable: true
+
+    UploadMetadata:
+      type: object
+      properties:
+        subfolder:
+          type: string
+          description: Subfolder within data/ directory
+          example: "uploads"
+        group:
+          type: string
+          description: Group/batch identifier
+          example: "batch-2026-01-05"
+        category:
+          type: string
+          description: Category for organizing uploads
+          example: "monthly-invoices"
+        upload_source:
+          type: string
+          enum: [web-ui, data-folder]
+          description: Source of the upload
+          example: "web-ui"
+        uploaded_at:
+          type: string
+          format: date-time
+          description: Upload timestamp
+          example: "2026-01-05T10:30:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - error
+      properties:
+        status:
+          type: string
+          enum: [error]
+        timestamp:
+          type: string
+          format: date-time
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Error code
+              example: "FILE_TOO_LARGE"
+            message:
+              type: string
+              description: Human-readable error message
+              example: "File size exceeds 50MB limit"
+            details:
+              type: object
+              description: Additional error details
+              additionalProperties: true
+
