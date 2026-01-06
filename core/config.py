@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     EMBED_MODEL: str = "text-embedding-3-small"
     LLM_TEMPERATURE: float = 0.0
 
+    # DeepSeek Chat Settings
+    DEEPSEEK_API_KEY: str | None = None
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_TEMPERATURE: float = 0.0
+
+    # Chatbot Settings
+    CHATBOT_RATE_LIMIT: int = 20  # queries per minute
+    CHATBOT_SESSION_TIMEOUT: int = 1800  # 30 minutes in seconds
+    CHATBOT_MAX_RESULTS: int = 50  # maximum invoices per response
+    CHATBOT_CONTEXT_WINDOW: int = 10  # last N messages in context
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

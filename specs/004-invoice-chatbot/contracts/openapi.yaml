@@ -1,0 +1,315 @@
+openapi: 3.0.3
+info:
+  title: Invoice Chatbot API
+  version: 1.0.0
+  description: API endpoints for conversational invoice querying using natural language
+
+paths:
+  /api/v1/chatbot/chat:
+    post:
+      summary: Send a chat message
+      description: Send a user message to the chatbot and receive a response. Maintains conversation context within a session.
+      operationId: sendChatMessage
+      tags:
+        - Chatbot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat response generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          headers:
+            Retry-After:
+              description: Number of seconds to wait before retrying
+              schema:
+                type: integer
+                example: 60
+        '500':
+          description: Server error (LLM service unavailable, database error, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/chatbot/sessions:
+    post:
+      summary: Create a new conversation session
+      description: Create a new conversation session for starting a chat
+      operationId: createSession
+      tags:
+        - Chatbot
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/chatbot/sessions/{session_id}:
+    get:
+      summary: Get conversation session
+      description: Retrieve conversation history for a session (last 10 messages)
+      operationId: getSession
+      tags:
+        - Chatbot
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Conversation session ID
+      responses:
+        '200':
+          description: Session information and message history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetailResponse'
+        '404':
+          description: Session not found or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: End conversation session
+      description: Explicitly end a conversation session and clear its history
+      operationId: endSession
+      tags:
+        - Chatbot
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Conversation session ID
+      responses:
+        '204':
+          description: Session ended successfully
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+        - session_id
+      properties:
+        message:
+          type: string
+          description: User's natural language question or message
+          example: "How many images did you train from dataset 'jimeng' folder, and list the total cost?"
+        session_id:
+          type: string
+          format: uuid
+          description: Conversation session ID (create new session if not provided)
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        language:
+          type: string
+          enum: [en, zh]
+          default: en
+          description: Preferred language for response (English or Chinese)
+          example: "en"
+
+    ChatResponse:
+      type: object
+      required:
+        - message
+        - session_id
+      properties:
+        message:
+          type: string
+          description: Chatbot's response message
+          example: "I found 20 invoices from the 'jimeng' dataset. The total cost is $15,450.00."
+        session_id:
+          type: string
+          format: uuid
+          description: Conversation session ID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        invoice_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Invoice IDs referenced in the response (if any)
+          example: ["123e4567-e89b-12d3-a456-426614174001", "123e4567-e89b-12d3-a456-426614174002"]
+        invoice_count:
+          type: integer
+          description: Number of invoices in the result set
+          example: 20
+        has_more:
+          type: boolean
+          description: Whether more results exist beyond the 50-invoice limit
+          example: false
+        metadata:
+          type: object
+          description: Additional response metadata
+          properties:
+            query_intent:
+              type: string
+              enum: [find_invoice, aggregate_query, list_invoices, get_details, ambiguous]
+              description: Classified intent of the user query
+              example: "aggregate_query"
+            response_time_ms:
+              type: integer
+              description: Response generation time in milliseconds
+              example: 1250
+            tokens_used:
+              type: integer
+              description: LLM tokens consumed for this response
+              example: 450
+
+    SessionResponse:
+      type: object
+      required:
+        - session_id
+        - created_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Unique session identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        created_at:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+          example: "2024-12-19T10:30:00Z"
+
+    SessionDetailResponse:
+      type: object
+      required:
+        - session_id
+        - created_at
+        - last_activity
+        - messages
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Unique session identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        created_at:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+          example: "2024-12-19T10:30:00Z"
+        last_activity:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+          example: "2024-12-19T10:35:00Z"
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          description: Conversation message history (last 10 messages)
+          maxItems: 10
+
+    ChatMessage:
+      type: object
+      required:
+        - message_id
+        - role
+        - content
+        - timestamp
+      properties:
+        message_id:
+          type: string
+          format: uuid
+          description: Unique message identifier
+          example: "123e4567-e89b-12d3-a456-426614174001"
+        role:
+          type: string
+          enum: [user, assistant]
+          description: Message role (user question or assistant response)
+          example: "user"
+        content:
+          type: string
+          description: Message text content
+          example: "How many invoices are from Acme Corp?"
+        timestamp:
+          type: string
+          format: date-time
+          description: Message timestamp
+          example: "2024-12-19T10:30:00Z"
+        metadata:
+          type: object
+          description: Additional message metadata
+          properties:
+            query_intent:
+              type: string
+              description: Classified query intent
+            invoice_ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: Invoice IDs referenced in this message
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error type identifier
+          example: "rate_limit_exceeded"
+        message:
+          type: string
+          description: User-friendly error message
+          example: "Rate limit exceeded. Please wait before submitting more queries."
+        details:
+          type: string
+          description: Additional error details (for debugging, not shown to users)
+          example: "User exceeded 20 queries per minute limit"
+        retry_after:
+          type: integer
+          description: Number of seconds to wait before retrying (for rate limit errors)
+          example: 60
+
