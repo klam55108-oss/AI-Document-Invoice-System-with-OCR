@@ -63,11 +63,16 @@ class MathCheckSubtotalTaxRule(ValidationRule):
         """
         # Check if required fields are present
         if extracted_data.subtotal is None or extracted_data.tax_amount is None or extracted_data.total_amount is None:
+            missing_fields = []
+            if extracted_data.subtotal is None: missing_fields.append("subtotal")
+            if extracted_data.tax_amount is None: missing_fields.append("tax_amount")
+            if extracted_data.total_amount is None: missing_fields.append("total_amount")
+            
             return ValidationRuleResult(
                 rule_name=self.name,
                 rule_description=self.description,
                 status="warning",
-                error_message="Missing required fields for math validation (subtotal, tax_amount, or total_amount)",
+                error_message=f"Missing fields for math validation: {', '.join(missing_fields)}",
             )
 
         # Calculate expected total
@@ -161,11 +166,15 @@ class LineItemMathRule(ValidationRule):
 
     async def validate(self, extracted_data: ExtractedDataSchema) -> ValidationRuleResult:
         if not extracted_data.line_items or extracted_data.subtotal is None:
+            missing = []
+            if not extracted_data.line_items: missing.append("line items")
+            if extracted_data.subtotal is None: missing.append("subtotal")
+            
             return ValidationRuleResult(
                 rule_name=self.name,
                 rule_description=self.description,
                 status="warning",
-                error_message="Missing line items or subtotal for validation",
+                error_message=f"Missing { ' and '.join(missing) } for validation",
             )
 
         sum_amounts = sum((item.amount or Decimal("0")) for item in extracted_data.line_items)

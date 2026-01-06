@@ -9,7 +9,7 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 # Supported file types
-SUPPORTED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv", ".jpg", ".jpeg", ".png"}
+SUPPORTED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".csv", ".jpg", ".jpeg", ".png", ".webp", ".avif"}
 
 
 async def discover_files(data_dir: Path) -> AsyncGenerator[Path, None]:
@@ -44,7 +44,7 @@ def get_file_type(file_path: Path) -> str:
         file_path: Path to file
 
     Returns:
-        File type string (pdf, xlsx, csv, jpg, png)
+        File type string (pdf, xlsx, csv, jpg, png, webp, avif)
     """
     ext = file_path.suffix.lower()
     # Normalize extensions

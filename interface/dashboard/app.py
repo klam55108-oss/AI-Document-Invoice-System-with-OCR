@@ -28,6 +28,13 @@ _engine = None
 _session_factory = None
 
 
+def get_status_value(status) -> str:
+    """Helper to get string value from either enum or string."""
+    if status is None:
+        return ""
+    return status.value if hasattr(status, 'value') else str(status)
+
+
 def init_db_connection():
     """Initialize database connection for dashboard."""
     global _engine, _session_factory
@@ -61,26 +68,49 @@ def main():
     # Initialize database
     init_db_connection()
 
-    # Sidebar filters
-    with st.sidebar:
-        st.header("Filters")
-        status_filter = st.selectbox(
-            "Processing Status",
-            ["All", "Pending", "Queued", "Processing", "Completed", "Failed"],
-            index=0,  # Default to All
-        )
-
     # Main content
     tab1, tab2 = st.tabs(["Invoice List", "Invoice Detail"])
 
+    # Sidebar filters
+    with st.sidebar:
+        st.header("🔍 Filters")
+        
+        status_filter = st.selectbox(
+            "Processing Status",
+            ["All", "Pending", "Queued", "Processing", "Completed", "Failed"],
+            index=0,
+        )
+        
+        search_query = st.text_input("Search Invoices", placeholder="File name or vendor...")
+        
+        date_range = st.date_input(
+            "Date Range",
+            value=[],
+            help="Filter by creation date"
+        )
+        
+        if st.button("Reset All Filters"):
+            st.rerun()
+
+    # Shared state for selection
+    if "selected_invoice_id" not in st.session_state:
+        st.session_state.selected_invoice_id = None
+
     with tab1:
-        display_invoice_list(status_filter)
+        selected_id = display_invoice_list(status_filter, search_query, date_range)
+        if selected_id:
+            st.session_state.selected_invoice_id = selected_id
+            # Switch to tab2 is handled via streamlit-native behavior if we use session_state properly
+            # In simple streamlit, we might need a button or just rely on the user clicking the tab
+            # after seeing the selection was captured. 
+            # But we can try to force a rerun if needed.
+            st.success(f"Selected: {selected_id[:8]}... Switch to 'Invoice Detail' to view.")
 
     with tab2:
-        display_invoice_detail()
+        display_invoice_detail(st.session_state.selected_invoice_id)
 
 
-def display_invoice_list(status_filter: str):
+def display_invoice_list(status_filter: str, search_query: str = None, date_range: tuple = None):
     """Display list of processed invoices."""
     st.header("Processed Invoices")
 
@@ -101,7 +131,7 @@ def display_invoice_list(status_filter: str):
     try:
         # Use asyncio.run() which properly manages event loop lifecycle
         # This ensures clean state for each request
-        invoices = asyncio.run(get_invoice_list(status_enum))
+        invoices = asyncio.run(get_invoice_list(status_enum, search_query, date_range))
     except Exception as e:
         st.error(f"Error loading invoices: {str(e)}")
         logger.error("Failed to load invoices", error=str(e), exc_info=True)
@@ -120,10 +150,6 @@ def display_invoice_list(status_filter: str):
 
     # Display status summary metrics (Global)
     if all_invoices:
-        # Handle both enum and string values for processing_status
-        def get_status_value(status):
-            return status.value if hasattr(status, 'value') else str(status)
-        
         all_invoice_data = [{"Status": get_status_value(inv.processing_status)} for inv in all_invoices]
         all_df = pd.DataFrame(all_invoice_data)
         status_counts = all_df["Status"].value_counts()
@@ -132,38 +158,62 @@ def display_invoice_list(status_filter: str):
         unique_hashes = len(set(inv.file_hash for inv in all_invoices if inv.file_hash))
         total_versions = len(all_invoices)
         
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # Advanced Metrics
+        completed_invoices = [inv for inv in all_invoices if get_status_value(inv.processing_status) == "completed"]
+        avg_confidence = 0
+        if completed_invoices:
+            conf_list = [float(inv.extracted_data.extraction_confidence) for inv in completed_invoices if inv.extracted_data and inv.extracted_data.extraction_confidence is not None]
+            if conf_list:
+                avg_confidence = sum(conf_list) / len(conf_list)
+        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         with col1:
-            st.metric("Total Invoices", total_versions, help="Total number of invoice processing records")
+            st.metric("Total Records", total_versions, help="Total number of processing attempts")
         with col2:
-            st.metric("Unique Files", unique_hashes, help="Number of unique file contents (by hash)")
+            st.metric("Unique Files", unique_hashes, help="Number of unique file contents")
         with col3:
-            completed = status_counts.get("completed", 0)
-            st.metric("✅ Completed", completed, delta=None)
+            st.metric("✅ Completed", status_counts.get("completed", 0))
         with col4:
-            failed = status_counts.get("failed", 0)
-            st.metric("❌ Failed", failed, delta=None)
+            st.metric("❌ Failed", status_counts.get("failed", 0))
         with col5:
-            processing = status_counts.get("processing", 0) + status_counts.get("pending", 0) + status_counts.get("queued", 0)
-            st.metric("⏳ In Progress", processing, delta=None)
+            st.metric("🎯 Avg Confidence", f"{avg_confidence*100:.1f}%")
+        with col6:
+            pending = status_counts.get("processing", 0) + status_counts.get("pending", 0) + status_counts.get("queued", 0)
+            st.metric("⏳ In Progress", pending)
 
     st.divider()
 
     if not invoices:
-        st.info(f"No invoices found with status: {status_filter}")
+        st.info(f"No invoices found matching your criteria.")
         return
 
     # Display invoices in an enhanced table
     invoice_data = []
     for invoice in invoices:
         # Handle both enum and string values for processing_status
-        status_value = invoice.processing_status.value if hasattr(invoice.processing_status, 'value') else str(invoice.processing_status)
+        status_value = get_status_value(invoice.processing_status)
         
         # Get extracted data summary
         extracted = invoice.extracted_data
         vendor_name = extracted.vendor_name if extracted else None
         total_amount = float(extracted.total_amount) if extracted and extracted.total_amount else None
         currency = extracted.currency if extracted else None
+        
+        # Get validation summary
+        validation_results = invoice.validation_results
+        val_summary = "—"
+        if validation_results:
+            passed = sum(1 for r in validation_results if get_status_value(r.status) == "passed")
+            total = len(validation_results)
+            failed = sum(1 for r in validation_results if get_status_value(r.status) == "failed")
+            warnings = sum(1 for r in validation_results if get_status_value(r.status) == "warning")
+            
+            if failed > 0:
+                val_summary = f"❌ {failed} Failed"
+            elif warnings > 0:
+                val_summary = f"⚠️ {warnings} Warn"
+            else:
+                val_summary = f"✅ {passed}/{total}"
         
         # Format file size
         file_size_kb = invoice.file_size / 1024 if invoice.file_size else 0
@@ -212,7 +262,11 @@ def display_invoice_list(status_filter: str):
         }
         status_display = f"{status_emoji.get(status_value.lower(), '')} {status_value.title()}"
         
+        # Extraction confidence and validation summary
+        confidence = float(extracted.extraction_confidence) if extracted and extracted.extraction_confidence else 0.0
+        
         invoice_data.append({
+            "ID_Full": str(invoice.id),
             "ID": str(invoice.id)[:8] + "...",
             "File Name": invoice.file_name,
             "Hash": hash_short,
@@ -220,8 +274,10 @@ def display_invoice_list(status_filter: str):
             "Size": file_size_str,
             "Version": version_indicator,
             "Status": status_display,
+            "Validation": val_summary,
             "Vendor": vendor_name or "—",
             "Amount": amount_str or "—",
+            "Confidence": confidence,
             "Duration": processing_duration or "—",
             "Created": invoice.created_at.strftime("%Y-%m-%d %H:%M") if invoice.created_at else "",
             "Processed": invoice.processed_at.strftime("%Y-%m-%d %H:%M") if invoice.processed_at else "—",
@@ -229,35 +285,54 @@ def display_invoice_list(status_filter: str):
 
     df = pd.DataFrame(invoice_data)
     
-    # Reorder columns for better readability
+    # Reorder columns for better readability (ensure ID_Full is included for selection)
     column_order = [
-        "ID", "File Name", "Hash", "Type", "Size", "Version", 
-        "Status", "Vendor", "Amount", "Duration", "Created", "Processed"
+        "ID_Full", "ID", "File Name", "Hash", "Type", "Status", "Validation", 
+        "Vendor", "Amount", "Confidence", "Duration", "Created"
     ]
+    # Filter columns to only those that exist
+    column_order = [c for c in column_order if c in df.columns]
     df = df[column_order]
     
     st.write(f"Showing {len(df)} results")
     
-    # Use st.dataframe with better formatting
-    st.dataframe(
+    # Use st.dataframe with better formatting and selection
+    event = st.dataframe(
         df,
         use_container_width=True,
         hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
         column_config={
+            "ID_Full": None,  # Hide the full ID
             "ID": st.column_config.TextColumn("ID", width="small"),
             "File Name": st.column_config.TextColumn("File Name", width="medium"),
             "Hash": st.column_config.TextColumn("Hash", width="small", help="First 8 chars of file content hash"),
             "Type": st.column_config.TextColumn("Type", width="small"),
             "Size": st.column_config.TextColumn("Size", width="small"),
-            "Version": st.column_config.NumberColumn("Version", width="small", format="%d"),
+            "Version": st.column_config.TextColumn("Version", width="small"),
             "Status": st.column_config.TextColumn("Status", width="small"),
             "Vendor": st.column_config.TextColumn("Vendor", width="medium"),
             "Amount": st.column_config.TextColumn("Amount", width="medium"),
+            "Confidence": st.column_config.ProgressColumn(
+                "Confidence",
+                help="Extraction confidence score",
+                format="%.0f%%",
+                min_value=0,
+                max_value=1,
+            ),
             "Duration": st.column_config.TextColumn("Duration", width="small", help="Processing time"),
             "Created": st.column_config.TextColumn("Created", width="medium"),
             "Processed": st.column_config.TextColumn("Processed", width="medium"),
         }
     )
+    
+    # Check if a row was selected
+    if event and event.selection and event.selection.get("rows"):
+        selected_row_idx = event.selection["rows"][0]
+        return df.iloc[selected_row_idx]["ID_Full"]
+    
+    return None
     
     # Add expandable section for additional metadata
     with st.expander("📊 View Detailed Metadata"):
@@ -283,9 +358,17 @@ def display_invoice_list(status_filter: str):
                     st.write(f"- Hash `{hash_short}...` appears **{count} times** (different versions)")
 
 
-def display_invoice_detail():
+def display_invoice_detail(preselected_id: str = None):
     """Display detailed invoice information."""
     st.header("Invoice Detail")
+    
+    # Initialize session state for invoice filtering if it doesn't exist
+    if "detail_invoice_id" not in st.session_state:
+        st.session_state.detail_invoice_id = preselected_id
+    
+    # If a new preselected ID is provided, update the session state
+    if preselected_id and preselected_id != st.session_state.detail_invoice_id:
+        st.session_state.detail_invoice_id = preselected_id
     
     # Get list of invoices for dropdown
     import asyncio
@@ -300,20 +383,29 @@ def display_invoice_detail():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Method 1: Dropdown selector (easier)
         if all_invoices:
             invoice_options = {
                 f"{inv.file_name} (v{inv.version}) - {str(inv.id)[:8]}...": str(inv.id)
                 for inv in sorted(all_invoices, key=lambda x: x.created_at, reverse=True)
             }
+            # Find index of preselected id if available
+            default_index = 0
+            if st.session_state.detail_invoice_id:
+                for i, inv_id in enumerate(invoice_options.values()):
+                    if inv_id == st.session_state.detail_invoice_id:
+                        default_index = i + 1
+                        break
+
             selected_invoice = st.selectbox(
                 "Select Invoice from List",
                 options=[""] + list(invoice_options.keys()),
+                index=default_index,
                 help="Choose an invoice from the dropdown, or enter UUID manually below"
             )
             
             if selected_invoice and selected_invoice in invoice_options:
                 invoice_id_input = invoice_options[selected_invoice]
+                st.session_state.detail_invoice_id = invoice_id_input
             else:
                 invoice_id_input = None
         else:
@@ -377,27 +469,48 @@ def display_invoice_detail():
             return
 
         # Display invoice information
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([1, 1, 1.5])
 
         with col1:
-            st.subheader("Invoice Information")
-            st.write(f"**File Name:** {invoice_detail['file_name']}")
-            st.write(f"**File Type:** {invoice_detail['file_type']}")
-            st.write(f"**Status:** {invoice_detail['processing_status']}")
+            st.subheader("Invoice Info")
+            st.write(f"**Name:** {invoice_detail['file_name']}")
+            st.write(f"**Type:** {invoice_detail['file_type'].upper()}")
             st.write(f"**Version:** {invoice_detail['version']}")
-            st.write(f"**Created:** {invoice_detail['created_at']}")
+            st.write(f"**Created:** {invoice_detail['created_at'].strftime('%Y-%m-%d %H:%M') if invoice_detail['created_at'] else '—'}")
 
         with col2:
-            st.subheader("Processing Status")
+            st.subheader("Processing")
             status = invoice_detail["processing_status"]
             if status == "completed":
-                st.success("✅ Processing Completed")
+                st.success("✅ Completed")
             elif status == "failed":
-                st.error("❌ Processing Failed")
+                st.error("❌ Failed")
                 if invoice_detail.get("error_message"):
-                    st.error(f"Error: {invoice_detail['error_message']}")
+                    st.caption(f"Error: {invoice_detail['error_message']}")
             else:
-                st.info(f"⏳ Status: {status}")
+                st.info(f"⏳ {status.title()}")
+            
+            st.write(f"**Processed:** {invoice_detail['processed_at'].strftime('%Y-%m-%d %H:%M') if invoice_detail['processed_at'] else '—'}")
+
+        with col3:
+            st.subheader("📄 File Preview")
+            file_path = invoice_detail.get("file_path")
+            file_type = invoice_detail.get("file_type", "").lower()
+            
+            if file_path:
+                import os
+                if os.path.exists(file_path):
+                    if file_type in ["jpg", "jpeg", "png"]:
+                        st.image(file_path, use_container_width=True, caption=invoice_detail['file_name'])
+                    elif file_type == "pdf":
+                        st.info("📂 PDF Preview not available in this view. Please refer to local file.")
+                        st.caption(f"Path: `{file_path}`")
+                    else:
+                        st.info(f"📄 {file_type.upper()} File")
+                        st.caption(f"Path: `{file_path}`")
+                else:
+                    st.warning("⚠️ Source file not found on disk")
+                    st.caption(f"Expected at: `{file_path}`")
 
         # Display extracted data
         if invoice_detail.get("extracted_data"):
@@ -426,36 +539,37 @@ def display_invoice_detail():
             
             with col1:
                 subtotal = extracted.get("subtotal")
-                if subtotal:
+                if subtotal is not None:
                     st.metric("Subtotal", f"{currency} {subtotal:,.2f}")
                 else:
                     st.metric("Subtotal", "—")
             
             with col2:
                 tax_rate = extracted.get("tax_rate")
-                if tax_rate:
+                if tax_rate is not None:
                     st.metric("Tax Rate", f"{tax_rate * 100:.2f}%")
                 else:
                     st.metric("Tax Rate", "—")
             
             with col3:
                 tax = extracted.get("tax_amount")
-                if tax:
+                if tax is not None:
                     st.metric("Tax Amount", f"{currency} {tax:,.2f}")
                 else:
                     st.metric("Tax Amount", "—")
             
             with col4:
                 total = extracted.get("total_amount")
-                if total:
+                if total is not None:
                     st.metric("Total Amount", f"{currency} {total:,.2f}", delta=None)
                 else:
                     st.metric("Total Amount", "—")
             
             with col5:
                 confidence = extracted.get("extraction_confidence")
-                if confidence:
-                    st.metric("Confidence", f"{confidence * 100:.1f}%")
+                if confidence is not None:
+                    conf_pct = float(confidence) * 100
+                    st.metric("Confidence", f"{conf_pct:.1f}%", help="AI extraction confidence")
                 else:
                     st.metric("Confidence", "—")
             
@@ -494,62 +608,88 @@ def display_invoice_detail():
         # Display validation results
         if invoice_detail.get("validation_results"):
             st.divider()
-            st.subheader("✅ Validation Results")
+            st.subheader("✅ Validation Analysis")
             validation_results = invoice_detail["validation_results"]
             
             # Count validation statuses
-            passed_count = sum(1 for r in validation_results if r.get("status", "").lower() == "passed")
-            failed_count = sum(1 for r in validation_results if r.get("status", "").lower() == "failed")
-            warning_count = sum(1 for r in validation_results if r.get("status", "").lower() == "warning")
+            passed_list = [r for r in validation_results if r.get("status", "").lower() == "passed"]
+            failed_list = [r for r in validation_results if r.get("status", "").lower() == "failed"]
+            warning_list = [r for r in validation_results if r.get("status", "").lower() == "warning"]
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("✅ Passed", passed_count)
+                st.metric("✅ Passed", len(passed_list))
             with col2:
-                st.metric("❌ Failed", failed_count)
+                st.metric("❌ Failed", len(failed_list), delta=len(failed_list) if len(failed_list) > 0 else None, delta_color="inverse")
             with col3:
-                st.metric("⚠️ Warnings", warning_count)
+                st.metric("⚠️ Warnings", len(warning_list))
             
             st.markdown("---")
             
-            # Display each validation result
-            for result in validation_results:
-                status = result.get("status", "").lower()
-                rule_name = result.get("rule_name", "Unknown Rule")
-                rule_desc = result.get("rule_description", "")
-                
-                # Create expandable container for each rule
-                with st.expander(f"{'✅' if status == 'passed' else '❌' if status == 'failed' else '⚠️'} {rule_name}", expanded=(status != "passed")):
-                    if rule_desc:
-                        st.caption(rule_desc)
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        expected = result.get("expected_value")
-                        actual = result.get("actual_value")
-                        tolerance = result.get("tolerance")
-                        
-                        if expected is not None:
-                            st.write(f"**Expected:** {expected:,.2f}" if isinstance(expected, (int, float)) else f"**Expected:** {expected}")
-                        if actual is not None:
-                            st.write(f"**Actual:** {actual:,.2f}" if isinstance(actual, (int, float)) else f"**Actual:** {actual}")
-                        if tolerance is not None:
-                            st.write(f"**Tolerance:** ±{tolerance:,.2f}" if isinstance(tolerance, (int, float)) else f"**Tolerance:** {tolerance}")
-                    
-                    with col2:
-                        validated_at = result.get("validated_at")
-                        if validated_at:
-                            if isinstance(validated_at, str):
-                                st.caption(f"Validated: {validated_at}")
-                            else:
-                                st.caption(f"Validated: {validated_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                    
-                    error_msg = result.get("error_message")
-                    if error_msg:
-                        st.error(f"**Error:** {error_msg}")
+            # Display Failed Rules first
+            if failed_list:
+                st.markdown("### ❌ Failed Rules")
+                for result in failed_list:
+                    render_validation_item(result)
+            
+            # Display Warning Rules
+            if warning_list:
+                st.markdown("### ⚠️ Warnings")
+                for result in warning_list:
+                    render_validation_item(result)
+            
+            # Display Passed Rules (collapsed)
+            if passed_list:
+                with st.expander(f"✅ View {len(passed_list)} Passed Rules"):
+                    for result in passed_list:
+                        render_validation_item(result)
         else:
             st.info("ℹ️ No validation results available. The invoice may still be processing.")
+
+
+def render_validation_item(result):
+    """Helper to render a validation result item."""
+    status = result.get("status", "").lower()
+    rule_name = result.get("rule_name", "Unknown Rule")
+    rule_desc = result.get("rule_description", "")
+    
+    # Emoji based on status
+    status_emoji = '✅' if status == 'passed' else '❌' if status == 'failed' else '⚠️'
+    
+    with st.container(border=True):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**{status_emoji} {rule_name}**")
+            if rule_desc:
+                st.caption(rule_desc)
+        with col2:
+            validated_at = result.get("validated_at")
+            if validated_at:
+                if isinstance(validated_at, str):
+                    st.caption(f"_{validated_at}_")
+                else:
+                    st.caption(f"_{validated_at.strftime('%Y-%m-%d %H:%M')}_")
+        
+        # Details
+        error_msg = result.get("error_message")
+        if error_msg:
+            st.error(error_msg)
+        
+        expected = result.get("expected_value")
+        actual = result.get("actual_value")
+        
+        if expected is not None or actual is not None:
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if expected is not None:
+                    st.write(f"**Expected:** {expected:,.2f}" if isinstance(expected, (int, float)) else f"**Expected:** {expected}")
+            with c2:
+                if actual is not None:
+                    st.write(f"**Actual:** {actual:,.2f}" if isinstance(actual, (int, float)) else f"**Actual:** {actual}")
+            with c3:
+                tolerance = result.get("tolerance")
+                if tolerance is not None:
+                    st.write(f"**Tolerance:** ±{tolerance:,.2f}" if isinstance(tolerance, (int, float)) else f"**Tolerance:** {tolerance}")
 
 
 if __name__ == "__main__":

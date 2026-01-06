@@ -111,7 +111,7 @@ async def process_invoice_file(
             processed_data = await process_pdf(file_path)
         elif file_type in {"xlsx", "csv"}:
             processed_data = await process_excel(file_path)
-        elif file_type in {"jpg", "png"}:
+        elif file_type in {"jpg", "png", "webp", "avif"}:
             processed_data = await process_image(file_path)
         else:
             raise ValueError(f"Unsupported file type: {file_type}")

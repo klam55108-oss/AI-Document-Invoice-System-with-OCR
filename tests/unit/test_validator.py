@@ -77,7 +77,7 @@ async def test_math_check_missing_fields():
     result = await rule.validate(extracted_data)
 
     assert result.status == "warning"
-    assert "Missing required fields" in result.error_message
+    assert "Missing fields" in result.error_message
 
 
 @pytest.mark.asyncio

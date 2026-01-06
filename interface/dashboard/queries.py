@@ -53,11 +53,17 @@ def get_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
-async def get_invoice_list(status: ProcessingStatus | None = None) -> list[Invoice]:
-    """Get list of invoices with optional status filter.
+async def get_invoice_list(
+    status: ProcessingStatus | None = None,
+    search_query: str | None = None,
+    date_range: tuple | None = None
+) -> list[Invoice]:
+    """Get list of invoices with optional filters.
 
     Args:
         status: Optional processing status filter
+        search_query: Optional search string (matches file name or vendor)
+        date_range: Optional tuple of (start_date, end_date)
 
     Returns:
         List of Invoice objects
@@ -94,12 +100,35 @@ async def get_invoice_list(status: ProcessingStatus | None = None) -> list[Invoi
         
         query = (
             select(Invoice)
-            .options(selectinload(Invoice.extracted_data))
+            .outerjoin(Invoice.extracted_data)
+            .options(
+                selectinload(Invoice.extracted_data),
+                selectinload(Invoice.validation_results)
+            )
             .order_by(Invoice.created_at.desc())
         )
 
         if status:
             query = query.where(Invoice.processing_status == status)
+            
+        if search_query:
+            from sqlalchemy import or_
+            search_pattern = f"%{search_query}%"
+            query = query.where(
+                or_(
+                    Invoice.file_name.ilike(search_pattern),
+                    ExtractedData.vendor_name.ilike(search_pattern)
+                )
+            )
+            
+        if date_range and len(date_range) == 2:
+            start_date, end_date = date_range
+            if start_date:
+                query = query.where(Invoice.created_at >= start_date)
+            if end_date:
+                # Add one day to end_date to include all of that day
+                from datetime import timedelta
+                query = query.where(Invoice.created_at < end_date + timedelta(days=1))
 
         # Use async context manager to ensure proper session lifecycle
         async with session_factory() as session:

@@ -113,49 +113,50 @@ python -c "from pgqueuer import PgQueuer, Queries, AsyncpgDriver; print('pgqueue
 ### 5. Enhanced Brain Layer (AI Extraction & Validation)
 
 **Files Modified:**
-- `brain/extractor.py` - LlamaIndex RAG-based extraction with self-correction
-- `brain/validator.py` - Enhanced validation framework with multiple rules
+- `brain/extractor.py` - LlamaIndex ReAct Agent with RAG and self-correction
+- `brain/validator.py` - Multi-rule validation framework
 - `brain/schemas.py` - Extended Pydantic schemas with validation methods
 
 **Implementation Details:**
 
 #### RAG-Based Extraction (`brain/extractor.py`)
-- Integrated LlamaIndex for intelligent data extraction
-- OpenAI LLM integration with configurable models
-- Vector store index for context-aware extraction
-- ReAct agent for reasoning-based extraction
-- Self-correction mechanism (`refine_extraction()`) for validation failures
-- Confidence scoring for extraction results
+- **LlamaIndex Integration**: Uses `VectorStoreIndex` to index raw document text for context-aware retrieval.
+- **ReAct Agent**: Implements a `ReActAgent` from LlamaIndex that uses reasoning to retrieve relevant context before extraction.
+- **Multi-Language Support**: Specialized prompts for Chinese invoices, looking for fields like `销售方` (seller), `发票号码` (invoice number), and `价税合计` (total).
+- **Tool Usage**: Uses `QueryEngineTool` for structured information retrieval from the document index.
+- **Self-Correction**: Implemented `refine_extraction()` which uses validation errors as feedback to corrected extraction results.
 
 #### Enhanced Validation Framework (`brain/validator.py`)
-- Extensible rule-based validation system
-- Multiple built-in validation rules:
-  - **MathCheckSubtotalTaxRule**: Validates subtotal + tax = total
-  - **DateConsistencyRule**: Ensures invoice date is before due date
-  - **LineItemMathRule**: Validates line item calculations
-  - **VendorSanityRule**: Validates vendor name format
-- Configurable tolerance for numeric comparisons
-- Detailed validation results with error messages
+- **Extensible Rule System**: A framework for running multiple validation rules against extracted data.
+- **Specific Rules Implemented**:
+  - `MathCheckSubtotalTaxRule`: Verifies $Subtotal + Tax = Total$ (within cent tolerance).
+  - `DateConsistencyRule`: Ensures the `due_date` is not before the `invoice_date`.
+  - `LineItemMathRule`: Validates that the sum of line items matches the `subtotal`.
+  - `VendorSanityRule`: Ensures the vendor name is present and meets basic format criteria.
+- **Tolerance Management**: Configurable tolerance (default 0.01) for financial calculations.
 
 #### Enhanced Schemas (`brain/schemas.py`)
-- Added validation methods to `ExtractedDataSchema`:
-  - `validate_amounts()`: Ensures positive amounts
-  - `validate_dates()`: Ensures logical date ordering
-- Currency validation
-- Improved type hints and field descriptions
+- **Pydantic v2**: Uses model and field validators for inline data integrity checks.
+- **Cross-Field Validation**: `validate_amounts` and `validate_dates` provide initial feedback during model instantiation.
 
-### 6. Ingestion Layer Improvements
+### 6. Dashboard Improvements (Streamlit)
 
 **Files Modified:**
-- `ingestion/pdf_processor.py` - Enhanced PDF processing
-- `ingestion/image_processor.py` - Improved image processing
-- `ingestion/orchestrator.py` - Enhanced orchestration logic
+- `interface/dashboard/app.py` - Enhanced Streamlit dashboard
+- `interface/dashboard/queries.py` - Optimized async database queries
 
 **Implementation Details:**
-- Better integration with Docling for PDF processing
-- Improved error handling and logging
-- Enhanced metadata extraction
-- Better support for table extraction from PDFs
+- **Advanced Filtering**:
+  - **Status Filter**: Filter by Processing Status (Pending, Queued, Processing, Completed, Failed).
+  - **Search**: Integrated search for file names or vendor names.
+  - **Date Range**: Date-based filtering for record creation.
+- **Interactive UI**:
+  - **Row Selection**: Built-in selection support using `st.dataframe` for viewing details.
+  - **Real-time Metrics**: Global metrics for Total Records, Unique Files, Success Rates, and Avg Confidence.
+  - **File Preview**: Inline image preview for processed invoice images.
+- **Async Optimization**:
+  - Improved connection pooling and lifecycle management for `asyncpg` within Streamlit's event loop.
+  - Automatic disposal of engines to prevent connection leaks during reruns.
 
 ### 7. Comprehensive Testing Suite
 
