@@ -33,6 +33,7 @@ from interface.dashboard.utils.data_formatters import (
     format_missing_field,
 )
 from interface.dashboard.utils.path_resolver import resolve_file_path
+from interface.dashboard.components.chatbot import render_chatbot_tab
 
 # Configure logging
 configure_logging(log_level="INFO", log_format="json")
@@ -93,7 +94,7 @@ def main():
     init_db_connection()
 
     # Main content
-    tab1, tab2, tab3 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files", "Chatbot"])
 
     # Sidebar filters
     with st.sidebar:
@@ -181,6 +182,9 @@ def main():
     with tab3:
         from interface.dashboard.components.upload import render_upload_ui
         render_upload_ui()
+
+    with tab4:
+        render_chatbot_tab()
 
 
 def display_invoice_list(

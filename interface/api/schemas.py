@@ -243,3 +243,49 @@ class UploadStatusResponse(ApiResponse):
 
     data: UploadStatusData
 
+
+# Chatbot schemas
+class ChatRequest(BaseModel):
+    """Request to send a chat message."""
+
+    message: str = Field(..., description="User's natural language question or message")
+    session_id: str = Field(..., description="Conversation session ID")
+    language: str = Field("en", description="Preferred language for response (en/zh)", pattern="^(en|zh)$")
+
+
+class ChatMessage(BaseModel):
+    """Chat message in conversation."""
+
+    message_id: str = Field(..., description="Unique message identifier")
+    role: str = Field(..., description="Message role (user/assistant)", pattern="^(user|assistant)$")
+    content: str = Field(..., description="Message text content")
+    timestamp: datetime = Field(..., description="Message timestamp")
+    metadata: dict[str, Any] | None = Field(None, description="Additional message metadata")
+
+
+class ChatResponse(BaseModel):
+    """Response for chat endpoint."""
+
+    message: str = Field(..., description="Chatbot's response message")
+    session_id: str = Field(..., description="Conversation session ID")
+    invoice_ids: list[str] = Field(default_factory=list, description="Invoice IDs referenced in response")
+    invoice_count: int = Field(0, description="Number of invoices in result set")
+    has_more: bool = Field(False, description="Whether more results exist beyond limit")
+    metadata: dict[str, Any] | None = Field(None, description="Additional response metadata")
+
+
+class SessionResponse(BaseModel):
+    """Response for session creation."""
+
+    session_id: str = Field(..., description="Unique session identifier")
+    created_at: datetime = Field(..., description="Session creation timestamp")
+
+
+class SessionDetailResponse(BaseModel):
+    """Response for session detail endpoint."""
+
+    session_id: str = Field(..., description="Unique session identifier")
+    created_at: datetime = Field(..., description="Session creation timestamp")
+    last_activity: datetime = Field(..., description="Last activity timestamp")
+    messages: list[ChatMessage] = Field(..., description="Conversation message history (last 10 messages)")
+

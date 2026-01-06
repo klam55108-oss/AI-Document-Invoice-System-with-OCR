@@ -9,7 +9,7 @@ from core.database import close_db, init_db
 from core.logging import configure_logging, get_logger
 from core.queue import init_queue
 from core.jobs import register_handlers
-from interface.api.routes import analytics, health, invoices, uploads
+from interface.api.routes import analytics, chatbot, health, invoices, uploads
 
 logger = get_logger(__name__)
 
@@ -78,6 +78,7 @@ app.include_router(health.router)
 app.include_router(invoices.router)
 app.include_router(analytics.router)
 app.include_router(uploads.router)
+app.include_router(chatbot.router, prefix="/api/v1")
 
 
 @app.get("/")
