@@ -156,6 +156,8 @@ curl -X POST "http://localhost:8000/api/v1/invoices/process" \
   -H "Content-Type: application/json" \
   -d '{
     "file_path": "invoice-1.png",
+    "category": "Invoice",
+    "group": "manual",
     "force_reprocess": false
   }'
 ```
@@ -164,7 +166,7 @@ curl -X POST "http://localhost:8000/api/v1/invoices/process" \
 
 1. Open http://localhost:8000/docs in your browser
 2. Find the `POST /api/v1/invoices/process` endpoint
-3. Click "Try it out" and enter the file path
+3. Click "Try it out" and enter the file path and optional metadata (category, group, job_id)
 4. Click "Execute"
 
 ### Viewing Results

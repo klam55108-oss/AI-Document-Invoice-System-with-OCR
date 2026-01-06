@@ -11,7 +11,7 @@ This feature extends the existing dashboard with new UI components and utilities
 
 ### Invoice
 - **Table**: `invoices`
-- **Key Fields**: `id`, `file_path`, `file_name`, `file_hash`, `file_type`, `version`, `processing_status`, `created_at`, `processed_at`
+- **Key Fields**: `id`, `storage_path`, `file_name`, `file_hash`, `file_type`, `version`, `processing_status`, `created_at`, `processed_at`, `category`, `group`, `job_id`
 - **Relationships**: One-to-one with ExtractedData, one-to-many with ValidationResult
 
 ### ExtractedData

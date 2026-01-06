@@ -54,10 +54,9 @@ This feature implements a web-based upload interface as an alternative to manual
 │  /api/v1/uploads│
 └────────┬────────┘
          │
-         ├─→ File Validation (type, size)
          ├─→ Duplicate Detection (hash)
          ├─→ File Storage (data/uploads/)
-         ├─→ Invoice Record Creation
+         ├─→ Invoice Record Creation (with `storage_path`)
          └─→ Automatic Processing
 ```
 
@@ -139,8 +138,8 @@ Get current processing status of an upload.
 - `tests/unit/test_upload_component.py` - Unit tests
 
 ### Modified Files
-- `core/models.py` - Added `upload_metadata` field to Invoice model
-- `ingestion/orchestrator.py` - Added `upload_metadata` parameter support
+- `core/models.py` - Renamed `file_path` to `storage_path` and added `upload_metadata` field
+- `ingestion/orchestrator.py` - Updated to use `storage_path` and added `upload_metadata` parameter support
 - `interface/api/schemas.py` - Added upload-related schemas
 - `interface/api/main.py` - Registered upload router
 - `interface/api/routes/invoices.py` - Added metadata to invoice detail response

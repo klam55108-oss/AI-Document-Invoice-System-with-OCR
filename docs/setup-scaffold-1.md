@@ -124,6 +124,7 @@ ai-einvoicing/
    - Stores invoice document metadata
    - Tracks processing status, file hash, version
    - Supports duplicate detection via file hash
+   - Includes `storage_path`, `category`, `group`, and `job_id`
 
 2. **extracted_data**
    - Stores structured invoice data extracted from documents
@@ -343,7 +344,7 @@ postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE
 
 **File Storage:**
 - Files are encrypted at rest using Fernet symmetric encryption
-- Original file path stored in database
+- Original storage path stored in database
 - Encrypted file path stored separately
 
 ### Concurrency Model
@@ -447,7 +448,9 @@ Processes an invoice file from a local path.
 **Request Body:**
 ```json
 {
-  "file_path": "/path/to/invoice.pdf",
+  "file_path": "data/invoice-1.png",
+  "category": "Invoice",
+  "group": "manual",
   "force_reprocess": false
 }
 ```

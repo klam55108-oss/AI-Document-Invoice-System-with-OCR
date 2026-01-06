@@ -5,13 +5,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
+from core.config import settings
 from core.database import get_session
 from core.logging import get_logger
-from core.models import Invoice
+from core.models import Invoice, ProcessingStatus
 from ingestion.file_discovery import SUPPORTED_EXTENSIONS, get_file_type, is_supported_file
 from ingestion.file_hasher import calculate_file_hash
 from ingestion.orchestrator import process_invoice_file
@@ -99,8 +100,88 @@ async def validate_file(file: UploadFile) -> tuple[bool, str | None]:
     return True, None
 
 
+async def process_invoice_background(
+    placeholder_invoice_id: uuid.UUID,
+    file_path: str,
+    data_dir: str,
+    force_reprocess: bool,
+    upload_metadata: dict,
+    category: str | None,
+    group: str | None,
+):
+    """Background task to process invoice file.
+    
+    Note: process_invoice_file creates its own invoice record, so we delete the placeholder
+    and let it create the real one. The placeholder invoice_id is returned to the client
+    for status polling, but the actual processed invoice will have a different ID.
+    """
+    database_url = settings.DATABASE_URL
+    if not database_url:
+        logger.error("DATABASE_URL not set, cannot process invoice in background", placeholder_invoice_id=str(placeholder_invoice_id))
+        return
+    
+    engine = create_async_engine(database_url, echo=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    try:
+        async with session_factory() as bg_session:
+            from pathlib import Path
+            from core.models import Invoice
+            
+            # Delete placeholder invoice (process_invoice_file will create the real one)
+            try:
+                placeholder_query = select(Invoice).where(Invoice.id == placeholder_invoice_id)
+                result = await bg_session.execute(placeholder_query)
+                placeholder = result.scalar_one_or_none()
+                if placeholder:
+                    await bg_session.delete(placeholder)
+                    await bg_session.commit()
+                    logger.debug("Deleted placeholder invoice", placeholder_id=str(placeholder_invoice_id))
+            except Exception as e:
+                logger.warning("Could not delete placeholder invoice", placeholder_id=str(placeholder_invoice_id), error=str(e))
+                await bg_session.rollback()
+            
+            try:
+                # Process invoice file (this will create a new invoice record)
+                processed_invoice = await process_invoice_file(
+                    file_path=Path(file_path),
+                    data_dir=Path(data_dir),
+                    session=bg_session,
+                    force_reprocess=force_reprocess,
+                    upload_metadata=upload_metadata,
+                    category=category,
+                    group=group,
+                )
+                
+                await bg_session.commit()
+                logger.info(
+                    "Background processing completed",
+                    placeholder_id=str(placeholder_invoice_id),
+                    processed_invoice_id=str(processed_invoice.id),
+                )
+                
+            except Exception as e:
+                await bg_session.rollback()
+                logger.error(
+                    "Background processing failed",
+                    placeholder_id=str(placeholder_invoice_id),
+                    error=str(e),
+                    exc_info=True,
+                )
+    except Exception as e:
+        logger.error(
+            "Background task setup failed",
+            placeholder_id=str(placeholder_invoice_id),
+            error=str(e),
+            exc_info=True,
+        )
+    finally:
+        await engine.dispose()
+
+
 @router.post("", response_model=UploadResponse, status_code=202)
 async def upload_files(
+    background_tasks: BackgroundTasks,
     files: Annotated[list[UploadFile], File(description="One or more invoice files to upload")],
     subfolder: Annotated[str | None, Form(description="Subfolder within data/ directory")] = None,
     group: Annotated[str | None, Form(description="Group/batch identifier")] = None,
@@ -212,42 +293,51 @@ async def upload_files(
             if category:
                 upload_metadata["category"] = category
 
-            # Process invoice file
-            try:
-                invoice = await process_invoice_file(
-                    file_path=file_path,
-                    data_dir=data_dir,
-                    session=session,
-                    force_reprocess=force_reprocess,
-                    upload_metadata=upload_metadata,
-                )
+            # Create invoice record with PENDING status (will be processed in background)
+            # Note: process_invoice_file will create its own invoice, so we create a placeholder
+            # that will be replaced/updated by the background processing
+            invoice = Invoice(
+                id=uuid.uuid4(),
+                storage_path=str(file_path.relative_to(data_dir)),
+                file_name=file_name,
+                category=category,
+                group=group,
+                file_hash=file_hash,
+                file_size=file_size,
+                file_type=get_file_type(file_path),
+                version=1,
+                processing_status=ProcessingStatus.PENDING,
+                upload_metadata=upload_metadata,
+            )
+            session.add(invoice)
+            await session.flush()  # Get invoice ID without committing
+            placeholder_invoice_id = invoice.id
+            
+            # Add to background tasks for processing
+            # The background task will delete this placeholder and let process_invoice_file create the real one
+            background_tasks.add_task(
+                process_invoice_background,
+                placeholder_invoice_id=placeholder_invoice_id,
+                file_path=str(file_path),
+                data_dir=str(data_dir),
+                force_reprocess=force_reprocess,
+                upload_metadata=upload_metadata,
+                category=category,
+                group=group,
+            )
 
-                await session.commit()
+            await session.commit()
 
-                upload_results.append(
-                    UploadItem(
-                        file_name=file_name,
-                        invoice_id=str(invoice.id),
-                        status="processing",
-                        file_path=str(file_path.relative_to(data_dir)),
-                        file_size=file_size,
-                    )
+            upload_results.append(
+                UploadItem(
+                    file_name=file_name,
+                    invoice_id=str(placeholder_invoice_id),
+                    status="queued",
+                    file_path=str(file_path.relative_to(data_dir)),
+                    file_size=file_size,
                 )
-                successful += 1
-
-            except Exception as e:
-                await session.rollback()
-                logger.error("Processing failed", file_name=file_name, error=str(e), exc_info=True)
-                upload_results.append(
-                    UploadItem(
-                        file_name=file_name,
-                        status="failed",
-                        file_path=str(file_path.relative_to(data_dir)),
-                        file_size=file_size,
-                        error_message=f"Processing failed: {str(e)}",
-                    )
-                )
-                failed += 1
+            )
+            successful += 1
 
         except Exception as e:
             logger.error("Upload failed", file_name=file_name, error=str(e), exc_info=True)

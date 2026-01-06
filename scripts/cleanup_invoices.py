@@ -40,7 +40,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
             if file_path_filter:
                 count_query = select(func.count()).select_from(
                     text("invoices")
-                ).where(text(f"file_path LIKE '%{file_path_filter}%'"))
+                ).where(text(f"storage_path LIKE '%{file_path_filter}%'"))
             
             result = await session.execute(count_query)
             invoice_count = result.scalar() or 0
@@ -70,7 +70,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
             
             # Show sample invoices
             sample_query = text("""
-                SELECT id, file_name, file_path, processing_status, created_at
+                SELECT id, file_name, storage_path, processing_status, created_at
                 FROM invoices
                 ORDER BY created_at DESC
                 LIMIT 5
@@ -80,8 +80,8 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
             
             if samples:
                 print(f"\n📄 Sample invoices (showing up to 5 most recent):")
-                for inv_id, file_name, file_path, status, created_at in samples:
-                    print(f"   - {file_name} ({file_path}) - {status} - {created_at}")
+                for inv_id, file_name, storage_path, status, created_at in samples:
+                    print(f"   - {file_name} ({storage_path}) - {status} - {created_at}")
             
             if dry_run:
                 print("\n🔍 DRY RUN MODE - No data will be deleted")
@@ -96,7 +96,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
             print(f"   - {jobs_count} processing job records")
             
             if file_path_filter:
-                print(f"\n   Filter: Only invoices with file_path containing '{file_path_filter}'")
+                print(f"\n   Filter: Only invoices with storage_path containing '{file_path_filter}'")
             
             print("\n🗑️  This action CANNOT be undone!")
             response = input("Type 'DELETE ALL' to confirm: ").strip()
@@ -115,7 +115,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
                 delete_validation = text(f"""
                     DELETE FROM validation_results 
                     WHERE invoice_id IN (
-                        SELECT id FROM invoices WHERE file_path LIKE '%{file_path_filter}%'
+                        SELECT id FROM invoices WHERE storage_path LIKE '%{file_path_filter}%'
                     )
                 """)
             await session.execute(delete_validation)
@@ -128,7 +128,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
                 delete_extracted = text(f"""
                     DELETE FROM extracted_data 
                     WHERE invoice_id IN (
-                        SELECT id FROM invoices WHERE file_path LIKE '%{file_path_filter}%'
+                        SELECT id FROM invoices WHERE storage_path LIKE '%{file_path_filter}%'
                     )
                 """)
             await session.execute(delete_extracted)
@@ -141,7 +141,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
                 delete_jobs = text(f"""
                     DELETE FROM processing_jobs 
                     WHERE invoice_id IN (
-                        SELECT id FROM invoices WHERE file_path LIKE '%{file_path_filter}%'
+                        SELECT id FROM invoices WHERE storage_path LIKE '%{file_path_filter}%'
                     )
                 """)
             await session.execute(delete_jobs)
@@ -150,7 +150,7 @@ async def cleanup_invoice_data(dry_run: bool = False, file_path_filter: str | No
             # 4. Delete invoices (last, as other tables reference it)
             print("   Deleting invoices...")
             if file_path_filter:
-                delete_invoices = text(f"DELETE FROM invoices WHERE file_path LIKE '%{file_path_filter}%'")
+                delete_invoices = text(f"DELETE FROM invoices WHERE storage_path LIKE '%{file_path_filter}%'")
             else:
                 delete_invoices = text("DELETE FROM invoices")
             await session.execute(delete_invoices)

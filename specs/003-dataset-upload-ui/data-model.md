@@ -80,7 +80,7 @@
 
 2. **Invoice Record Creation**:
    - Create `Invoice` record with:
-     - `file_path`: Relative path from `data/` (e.g., "uploads/invoice-1.pdf")
+     - `storage_path`: Relative path from `data/` (e.g., "uploads/invoice-1.pdf")
      - `file_name`: Original filename
      - `file_hash`: SHA-256 hash
      - `file_size`: File size in bytes
