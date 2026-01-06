@@ -185,7 +185,7 @@ specs/*/temp/
 .github/
 .antigravity/
 .obsidian/
-.cursor/
-.specify/
+#.cursor/
+#.specify/
 /etc/
 /data/
