@@ -177,7 +177,15 @@ class LineItemMathRule(ValidationRule):
                 error_message=f"Missing { ' and '.join(missing) } for validation",
             )
 
-        sum_amounts = sum((item.amount or Decimal("0")) for item in extracted_data.line_items)
+        # Calculate sum of line item amounts, with fallback to qty * price if amount is missing
+        sum_amounts = Decimal("0")
+        for item in extracted_data.line_items:
+            item_amount = item.amount
+            if item_amount is None and item.quantity is not None and item.unit_price is not None:
+                item_amount = Decimal(str(item.quantity)) * item.unit_price
+            
+            sum_amounts += item_amount or Decimal("0")
+
         difference = abs(sum_amounts - extracted_data.subtotal)
 
         if difference <= self.tolerance:

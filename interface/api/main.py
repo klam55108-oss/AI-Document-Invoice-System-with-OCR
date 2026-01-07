@@ -109,7 +109,7 @@ app.include_router(chatbot.router, prefix="/api/v1")
 async def root():
     """Root endpoint."""
     return {
-        "message": "E-Invoice Processing API",
+        "message": "AgenticAG E-Invoice Processing API",
         "version": "1.0.0",
         "docs": "/docs",
     }

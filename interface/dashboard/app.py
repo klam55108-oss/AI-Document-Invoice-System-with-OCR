@@ -925,7 +925,11 @@ def display_invoice_detail(preselected_id: str = None):
             with col1:
                 subtotal = extracted.get("subtotal")
                 if subtotal is not None:
-                    st.metric("Subtotal", f"{currency} {subtotal:,.2f}")
+                    try:
+                        subtotal_val = float(subtotal)
+                        st.metric("Subtotal", f"{currency} {subtotal_val:,.2f}")
+                    except (ValueError, TypeError):
+                        st.metric("Subtotal", f"{currency} {subtotal}")
                 else:
                     st.metric("Subtotal", "—")
             
@@ -939,14 +943,22 @@ def display_invoice_detail(preselected_id: str = None):
             with col3:
                 tax = extracted.get("tax_amount")
                 if tax is not None:
-                    st.metric("Tax Amount", f"{currency} {tax:,.2f}")
+                    try:
+                        tax_val = float(tax)
+                        st.metric("Tax Amount", f"{currency} {tax_val:,.2f}")
+                    except (ValueError, TypeError):
+                        st.metric("Tax Amount", f"{currency} {tax}")
                 else:
                     st.metric("Tax Amount", "—")
             
             with col4:
                 total = extracted.get("total_amount")
                 if total is not None:
-                    st.metric("Total Amount", f"{currency} {total:,.2f}", delta=None)
+                    try:
+                        total_val = float(total)
+                        st.metric("Total Amount", f"{currency} {total_val:,.2f}", delta=None)
+                    except (ValueError, TypeError):
+                        st.metric("Total Amount", f"{currency} {total}", delta=None)
                 else:
                     st.metric("Total Amount", "—")
             
@@ -971,11 +983,24 @@ def display_invoice_detail(preselected_id: str = None):
                     line_items_data = []
                     for item in line_items:
                         if isinstance(item, dict):
+                            # Helpfully convert string numbers to floats for formatting
+                            unit_price = item.get("unit_price")
+                            try:
+                                unit_price_fmt = f"{currency} {float(unit_price):,.2f}" if unit_price is not None else "—"
+                            except (ValueError, TypeError):
+                                unit_price_fmt = f"{currency} {unit_price}" if unit_price is not None else "—"
+                                
+                            amount = item.get("amount")
+                            try:
+                                amount_fmt = f"{currency} {float(amount):,.2f}" if amount is not None else "—"
+                            except (ValueError, TypeError):
+                                amount_fmt = f"{currency} {amount}" if amount is not None else "—"
+
                             line_items_data.append({
                                 "Description": item.get("description", "—"),
                                 "Quantity": item.get("quantity", "—"),
-                                "Unit Price": f"{currency} {item.get('unit_price', 0):,.2f}" if item.get("unit_price") else "—",
-                                "Amount": f"{currency} {item.get('amount', 0):,.2f}" if item.get("amount") else "—",
+                                "Unit Price": unit_price_fmt,
+                                "Amount": amount_fmt,
                             })
                     if line_items_data:
                         st.dataframe(pd.DataFrame(line_items_data), width='stretch', hide_index=True)

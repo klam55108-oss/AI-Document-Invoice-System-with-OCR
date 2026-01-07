@@ -305,3 +305,10 @@ This branch successfully resolved all critical ingestion workflow issues:
 
 The ingestion workflow is now production-ready and can handle real-world invoice processing scenarios reliably.
 
+### Summary of your OCR Pipeline:
+
+- Images: PaddleOCR (Local Processing)
+- PDFs: Docling (Advanced Layout Reconstruction)
+- Data Extraction: DeepSeek-Chat (AI Intelligence)
+
+**Conclusion**: The latest implemented solution for raw text extraction from images is **PaddleOCR**. DeepSeek-OCR is currently a planned or research-stage alternative in your documentation.

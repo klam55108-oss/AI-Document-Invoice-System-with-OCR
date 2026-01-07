@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import numpy as np
-from sentence_transformers import SentenceTransformer
+# Deferred import for sentence_transformers to handle missing dependency gracefully
 
 from core.config import settings
 from core.logging import get_logger
@@ -26,9 +26,17 @@ class VectorRetriever:
     def _load_model(self) -> None:
         """Lazy load the embedding model."""
         if not self._model_loaded:
-            logger.info("Loading embedding model", model=self.model_name)
-            self.model = SentenceTransformer(self.model_name)
-            self._model_loaded = True
+            try:
+                from sentence_transformers import SentenceTransformer
+                logger.info("Loading embedding model", model=self.model_name)
+                self.model = SentenceTransformer(self.model_name)
+                self._model_loaded = True
+            except ImportError:
+                logger.warning(
+                    "sentence-transformers not installed. Vector search will be disabled.",
+                    model=self.model_name
+                )
+                self._model_loaded = True # Mark as loaded (but None) to prevent repeated attempts
 
     async def search_similar(
         self,
@@ -60,7 +68,8 @@ class VectorRetriever:
         # Load model if needed
         self._load_model()
         if self.model is None:
-            raise RuntimeError("Embedding model not loaded")
+            logger.info("Vector search unavailable (model not loaded), skipping")
+            return []
 
         try:
             # Embed query
@@ -114,6 +123,15 @@ class VectorRetriever:
                 )
             else:
                 logger.error("Vector search failed", error=error_str, query=query_text)
+            
+            # CRITICAL: Rollback to clear the "aborted transaction" state 
+            # so subsequent database queries in the same session can proceed.
+            try:
+                await session.rollback()
+                logger.info("Transaction rolled back after vector search failure")
+            except Exception as rollback_err:
+                logger.error("Failed to rollback transaction", error=str(rollback_err))
+                
             # Fallback: return empty list
             return []
 

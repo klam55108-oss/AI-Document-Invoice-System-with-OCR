@@ -28,8 +28,8 @@ class Settings(BaseSettings):
 
     # LLM Settings
     OPENAI_API_KEY: str | None = None
-    LLM_MODEL: str = "gpt-4o"
-    EMBED_MODEL: str = "text-embedding-3-small"
+    LLM_MODEL: str = "deepseek-chat"
+    EMBED_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     LLM_TEMPERATURE: float = 0.0
 
     # DeepSeek Chat Settings

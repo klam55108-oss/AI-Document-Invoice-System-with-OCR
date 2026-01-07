@@ -25,7 +25,7 @@ class ExtractedDataSchema(BaseModel):
     due_date: date | None = Field(None, description="Payment due date")
     subtotal: Decimal | None = Field(None, ge=0, description="Subtotal amount")
     tax_amount: Decimal | None = Field(None, ge=0, description="Tax amount")
-    tax_rate: Decimal | None = Field(None, ge=0, le=1, description="Tax rate (0-1)")
+    tax_rate: Decimal | None = Field(None, ge=0, description="Tax rate (e.g., 0.05 or 5.0)")
     total_amount: Decimal | None = Field(None, ge=0, description="Total amount")
     currency: str | None = Field("USD", description="Currency code (ISO 4217)")
     line_items: list[LineItem] | None = Field(None, description="Line items")
@@ -43,6 +43,17 @@ class ExtractedDataSchema(BaseModel):
         if len(v) != 3:
             raise ValueError("Currency code must be 3 characters (ISO 4217)")
         return v.upper()
+
+    @field_validator("tax_rate")
+    @classmethod
+    def validate_tax_rate(cls, v: Decimal | None) -> Decimal | None:
+        """Normalize tax rate (e.g., convert 5.0 to 0.05)."""
+        if v is None:
+            return None
+        # If rate is > 1.0, assume it's a percentage and convert to decimal
+        if v > 1:
+            return v / 100
+        return v
 
     @model_validator(mode="after")
     def validate_amounts(self) -> "ExtractedDataSchema":

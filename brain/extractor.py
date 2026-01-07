@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 
 async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = None) -> ExtractedDataSchema:
-    """Extract structured invoice data from raw text using LlamaIndex RAG.
+    """Extract structured invoice data from raw text using direct LLM extraction.
 
     Args:
         raw_text: Raw text extracted from invoice document
@@ -26,130 +26,109 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
     Returns:
         ExtractedDataSchema with extracted fields
     """
-    logger.info("Extracting invoice data using LlamaIndex RAG", text_length=len(raw_text))
+    logger.info("Extracting invoice data using direct LLM", text_length=len(raw_text))
 
     if not raw_text.strip():
         logger.warning("Empty raw text provided for extraction")
         return ExtractedDataSchema(raw_text=raw_text, extraction_confidence=0.0)
 
     try:
-        # Initialize LLM
-        llm = OpenAI(model=settings.LLM_MODEL, temperature=settings.LLM_TEMPERATURE)
-
-        # RAG Integration: Index the raw text
-        doc = Document(text=raw_text, metadata=metadata or {})
-        index = VectorStoreIndex.from_documents([doc])
-        query_engine = index.as_query_engine(llm=llm, response_mode="compact")
-
-        # Define tools for the agent
-        tools = [
-            QueryEngineTool(
-                query_engine=query_engine,
-                metadata=ToolMetadata(
-                    name="invoice_data_retriever",
-                    description="Retrieves specific text and details from the raw invoice document.",
-                ),
+        # Initialize direct OpenAI client for better compatibility with DeepSeek
+        import openai
+        import json
+        
+        if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
+            logger.info("Using DeepSeek via direct OpenAI client", model=settings.LLM_MODEL)
+            client = openai.OpenAI(
+                api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
+                base_url="https://api.deepseek.com/v1"
             )
-        ]
+        else:
+            logger.info("Using OpenAI via direct client", model=settings.LLM_MODEL)
+            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
-        # Initialize Agent
-        agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
-
-        # Agentic Flow: Agent retrieves context and then we extract structured data
-        agent_query = (
-            "Analyze this invoice document provided in Markdown format. "
-            "The invoice may be in any language (English, Chinese, etc.). "
-            "Pay special attention to any tables which contain line items, quantities, and prices. "
+        # Prompt for extraction - Modified for JSON output
+        system_prompt = (
+            "You are an expert invoice processing agent. Your task is to extract structured information "
+            "from raw text retrieved from an invoice document and return it as a JSON object.\n"
             "\n"
-            "CRITICAL: For Chinese invoices, identify:\n"
-            "- 销售方 (seller/vendor) - THIS is the vendor_name, NOT the buyer (购买方)\n"
-            "- 购买方 (buyer) - This is the customer, NOT the vendor\n"
-            "- 发票号码 (invoice number)\n"
-            "- 开票日期 (invoice date)\n"
-            "- 价税合计 (total amount including tax)\n"
-            "- 合计 (subtotal)\n"
-            "- 税额 (tax amount)\n"
-            "- 货物或应税劳务名称 (goods/services table with line items)\n"
-            "\n"
-            "For English invoices, identify: vendor/seller name, invoice number, date, "
-            "total amount, subtotal, tax amount, and all line items.\n"
-            "\n"
-            "Provide a comprehensive summary of all found details, making sure to clearly "
-            "distinguish between seller (vendor) and buyer information."
-        )
-        agent_response = agent.chat(agent_query)
-        context_str = str(agent_response)
-
-        # Create structured output program
-        prompt_template_str = (
-            "You are an expert invoice processing agent that can handle invoices in multiple languages "
-            "(English, Chinese, etc.). Your task is to extract structured information "
-            "from the following context retrieved from an invoice document.\n"
-            "CONTEXT FROM DOCUMENT:\n"
-            "---------------------\n"
-            "{context_str}\n"
-            "---------------------\n"
-            "Metadata (may contain raw tables): {metadata}\n"
+            "Return ONLY a valid JSON object following this structure:\n"
+            "{\n"
+            '  "vendor_name": "string or null",\n'
+            '  "invoice_number": "string or null",\n'
+            '  "invoice_date": "YYYY-MM-DD or null",\n'
+            '  "total_amount": number or null,\n'
+            '  "subtotal": number or null,\n'
+            '  "tax_amount": number or null,\n'
+            '  "tax_rate": number or null,\n'
+            '  "currency": "string or null",\n'
+            '  "line_items": [\n'
+            '    {"description": "string", "quantity": number, "unit_price": number, "amount": number}\n'
+            '  ]\n'
+            "}\n"
             "\n"
             "CRITICAL EXTRACTION RULES:\n"
-            "\n"
-            "For Chinese invoices (增值税专用发票, 普通发票, etc.):\n"
-            "- vendor_name: MUST extract from 销售方 (seller/vendor) field, NOT from 购买方 (buyer). "
-            "Look for text like '销售方: [company name]' or '销售方名称: [company name]'. "
-            "The vendor_name is the SELLER, not the buyer. If you see '销售方: 示例商贸公司', "
-            "then vendor_name should be '示例商贸公司'. DO NOT use the buyer (购买方) name.\n"
-            "- invoice_number: Extract from 发票号码 field\n"
-            "- invoice_date: Extract from 开票日期 field\n"
-            "- total_amount: Extract from 价税合计 (total including tax) field\n"
-            "- subtotal: Extract from 合计 (subtotal) or calculate from line items\n"
-            "- tax_amount: Extract from 税额 (tax amount) field\n"
-            "- line_items: Extract from the goods/services table (货物或应税劳务名称)\n"
-            "\n"
-            "For English invoices:\n"
-            "- vendor_name: Extract from 'Vendor', 'Seller', 'From', 'Supplier', or 'Company' fields\n"
-            "- invoice_number: Extract from 'Invoice Number', 'Invoice #', 'INV' fields\n"
-            "- invoice_date: Extract from 'Invoice Date', 'Date', 'Issue Date' fields\n"
-            "- total_amount: Extract from 'Total', 'Amount Due', 'Grand Total' fields\n"
-            "- subtotal: Extract from 'Subtotal', 'Sub-total' fields\n"
-            "- tax_amount: Extract from 'Tax', 'VAT', 'GST', 'Tax Amount' fields\n"
-            "\n"
-            "IMPORTANT: vendor_name is CRITICAL and MUST be extracted. If you cannot find it, "
-            "look more carefully in the document context. For Chinese invoices, the vendor is "
-            "ALWAYS the 销售方 (seller), never the 购买方 (buyer).\n"
-            "\n"
-            "Extract all amounts as decimal numbers, regardless of currency or language.\n"
+            "- vendor_name: MUST extract from 销售方 (seller/vendor) field for Chinese invoices.\n"
+            "- Extract all amounts as numbers.\n"
+            "- Ensure dates are in YYYY-MM-DD format.\n"
+            "- RESOLVE CONFLICTING TOTALS: If the document contains multiple totals (e.g., Subtotal vs Pay Amount), "
+            "choose the values that are mathematically consistent (Subtotal + Tax = Total).\n"
         )
 
-        program = LLMTextCompletionProgram.from_defaults(
-            output_cls=ExtractedDataSchema,
-            prompt_template_str=prompt_template_str,
-            llm=llm,
-            verbose=True,
+        user_content = f"RAW TEXT FROM DOCUMENT:\n---------------------\n{raw_text}\n---------------------\n"
+        if metadata:
+            user_content += f"Metadata: {metadata}"
+
+        # Execute extraction using standard chat completion
+        response = client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=settings.LLM_TEMPERATURE,
         )
 
-        # Execute extraction using agent-derived context
-        extracted = program(context_str=context_str, metadata=metadata or {})
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("LLM returned empty content")
+
+        # Clean JSON if necessary (handle markdown blocks)
+        json_str = content.strip()
+        if json_str.startswith("```json"):
+            json_str = json_str.split("```json")[1].split("```")[0].strip()
+        elif json_str.startswith("```"):
+            json_str = json_str.split("```")[1].split("```")[0].strip()
+
+        # Parse JSON and validate with Pydantic
+        data = json.loads(json_str)
+        extracted = ExtractedDataSchema(**data)
 
         # Ensure raw_text is preserved
         extracted.raw_text = raw_text
 
-        # Add extraction confidence if not set (or use a default)
+        # Add extraction confidence if not set
         if not extracted.extraction_confidence:
-            extracted.extraction_confidence = 0.95  # Placeholder for high confidence from LLM
+            extracted.extraction_confidence = Decimal("0.95")
 
         logger.info(
-            "Data extraction completed via LlamaIndex",
+            "Data extraction completed successfully",
             vendor=extracted.vendor_name,
             invoice_number=extracted.invoice_number,
-            total=extracted.total_amount,
+            total=float(extracted.total_amount) if extracted.total_amount else None,
         )
 
         return extracted
 
     except Exception as e:
-        logger.error("LlamaIndex extraction failed", error=str(e))
-        # Fallback to empty schema or handle as needed
-        return ExtractedDataSchema(raw_text=raw_text, extraction_confidence=0.0)
+        error_msg = str(e)
+        if "401" in error_msg or "api_key" in error_msg.lower():
+            logger.error("LLM Authentication failed. Please check your API keys in .env", error=error_msg)
+        else:
+            logger.error("Data extraction failed", error=error_msg)
+        
+        # Return schema with raw text preserved so it can be seen in dashboard
+        return ExtractedDataSchema(raw_text=raw_text, extraction_confidence=Decimal("0.0"))
 
 
 async def refine_extraction(
@@ -188,8 +167,9 @@ async def refine_extraction(
         elif error.rule_name == "date_consistency" and error.status == "failed":
             logger.info("Correction logic would trigger for date error", rule=error.rule_name)
 
-    # Increase confidence slightly to indicate "refined"
-    refined_data.extraction_confidence = (refined_data.extraction_confidence or Decimal("0")) + Decimal("0.1")
+    # Increase confidence slightly to indicate "refined", but cap at 1.0
+    current_conf = refined_data.extraction_confidence or Decimal("0")
+    refined_data.extraction_confidence = min(current_conf + Decimal("0.1"), Decimal("1.0"))
 
     return refined_data
 

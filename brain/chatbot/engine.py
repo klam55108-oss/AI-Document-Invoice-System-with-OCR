@@ -141,7 +141,12 @@ class ChatbotEngine:
             )
             
             # Check if it's a database error
-            if "database" in error_str.lower() or "connection" in error_str.lower():
+            if "database" in error_str.lower() or "connection" in error_str.lower() or "transaction" in error_str.lower():
+                try:
+                    await self.session.rollback()
+                    logger.info("Transaction rolled back after engine error")
+                except Exception as rollback_err:
+                    logger.error("Failed to rollback transaction", error=str(rollback_err))
                 return self._get_error_message(language, error_type="database")
             else:
                 return self._get_error_message(language, error_type="generic")
@@ -250,6 +255,12 @@ class ChatbotEngine:
                 query_preview=query[:50],
                 exc_info=True,
             )
+            # CRITICAL: Rollback after error so subsequent queries can proceed
+            try:
+                await self.session.rollback()
+                logger.info("Transaction rolled back after database query failure")
+            except Exception as rollback_err:
+                logger.error("Failed to rollback transaction", error=str(rollback_err))
             # Return empty list - error handling will be done at higher level
             return []
 
@@ -304,6 +315,12 @@ class ChatbotEngine:
 
         except Exception as e:
             logger.error("Filtered query failed", error=str(e), exc_info=True)
+            # Rollback before fallback query
+            try:
+                await self.session.rollback()
+                logger.info("Transaction rolled back after filtered query failure")
+            except Exception as rollback_err:
+                logger.error("Failed to rollback transaction", error=str(rollback_err))
             # Fallback to basic query
             return await self._query_invoices_from_db(query, intent)
 
@@ -350,8 +367,12 @@ class ChatbotEngine:
             invoice_dict = {
                 "id": str(invoice.id),
                 "file_name": invoice.file_name,
-                "file_path": invoice.file_path,
-                "processing_status": invoice.processing_status.value,
+                "storage_path": invoice.storage_path,
+                "processing_status": (
+                    invoice.processing_status.value 
+                    if hasattr(invoice.processing_status, "value") 
+                    else str(invoice.processing_status)
+                ),
                 "invoice_number": extracted_data.invoice_number if extracted_data else None,
                 "vendor_name": extracted_data.vendor_name if extracted_data else None,
                 "invoice_date": (

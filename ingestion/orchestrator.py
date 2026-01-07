@@ -226,7 +226,7 @@ async def process_invoice_file(
             tax_rate=extracted_data.tax_rate,
             total_amount=extracted_data.total_amount,
             currency=extracted_data.currency,
-            line_items=extracted_data.line_items,
+            line_items=[item.model_dump(mode="json") for item in extracted_data.line_items] if extracted_data.line_items else None,
             raw_text=extracted_data.raw_text,
             extraction_confidence=extracted_data.extraction_confidence,
         )
@@ -329,7 +329,7 @@ async def process_invoice_file(
             extracted_record.tax_amount = refined_data.tax_amount
             extracted_record.tax_rate = refined_data.tax_rate
             extracted_record.total_amount = refined_data.total_amount
-            extracted_record.line_items = refined_data.line_items
+            extracted_record.line_items = [item.model_dump(mode="json") for item in refined_data.line_items] if refined_data.line_items else None
             extracted_record.extraction_confidence = refined_data.extraction_confidence
 
             # Re-run validation on refined data to see if it passed
