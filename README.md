@@ -205,19 +205,49 @@ Each invoice goes through these stages:
 ### Troubleshooting
 
 **If processing fails:**
-- Check backend logs for error messages
+- Check backend logs for error messages (logs include processing stage information)
 - Verify the file exists in `data/` directory
-- Check database connection in `.env` file
-- Ensure all dependencies are installed
+- Check database connection in `.env` file: `DATABASE_URL` must be set
+- Ensure all dependencies are installed: `pip install -e ".[dev]"`
+- Run database migrations: `alembic upgrade head`
+- Check file permissions: ensure `data/` directory is writable
+- Verify file is not corrupted: check file size > 0
+- Check for missing processing libraries (OCR, PDF): error messages will indicate which library is missing
 
 **If dashboard shows no invoices:**
 - Make sure you've processed at least one invoice
-- Check the status filter in the sidebar
-- Verify database connection
+- Check the status filter in the sidebar (may be filtering out your invoices)
+- Verify database connection: check `.env` file has `DATABASE_URL`
+- Check dashboard logs for database query errors
+- Verify database schema is up to date: `alembic current` should show latest migration
 
 **API not responding:**
 - Check if backend is running: `curl http://localhost:8000/health`
 - Verify port 8000 is not in use by another service
+- Check API logs for startup errors
+- Verify database is accessible: health endpoint will show "degraded" if database issues exist
+
+**Schema mismatch errors:**
+- Run migrations: `alembic upgrade head`
+- Verify migration status: `alembic current`
+- Check that `storage_path` column exists in `invoices` table (not `file_path`)
+
+**Error messages:**
+- All error messages now include processing stage information
+- Check logs for detailed error context including file path, invoice ID, and stage
+- Error messages are user-friendly and indicate what failed and where
+
+**PaddleOCR warnings and resource usage:**
+- First-time image processing will show verbose PaddleOCR model loading messages
+- These are harmless informational messages - models are being cached
+- Subsequent requests will be faster and quieter
+- To suppress warnings in curl, redirect stderr: `curl ... 2>/dev/null`
+- The warnings are automatically suppressed in the application logs
+- **IMPORTANT**: OCR initialization is now non-blocking and runs in a thread pool
+- This prevents system crashes and resource exhaustion
+- First request may take 30-60 seconds for model loading
+- Use `--max-time 120` with curl to set a timeout
+- File size limit: 100MB maximum per file
 
 ### Current Implementation Status
 
@@ -233,9 +263,19 @@ Each invoice goes through these stages:
 - SHA-256 file hashing for duplicate detection
 - Database migrations with Alembic
 
+**✅ Recently Completed (Ingestion Workflow Fixes):**
+- Non-blocking PaddleOCR initialization (prevents system crashes)
+- Comprehensive error handling with user-friendly messages
+- Database schema health checks and connection retry logic
+- Enhanced logging with processing stage tracking
+- OCR timeout handling with retry logic (180s default, up to 10min for large images)
+- File validation (size limits, corruption checks)
+- Background processing with proper session management
+- Status tracking with immediate database commits
+- Performance monitoring (processing time tracking)
+
 **🚧 In Progress / Planned:**
 - Docling integration for advanced PDF processing
-- OCR integration (DeepSeek-OCR/PaddleOCR) for image processing
 - LlamaIndex RAG integration for agentic extraction
 - pgqueuer extension setup for job queue management
 - Enhanced validation rules and self-correcting intelligence

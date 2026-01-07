@@ -65,7 +65,18 @@ async def process_excel(file_path: Path) -> dict[str, Any]:
             },
         }
 
+    except FileNotFoundError as e:
+        error_msg = f"Excel/CSV file not found: {file_path}"
+        logger.error("Excel/CSV processing failed - file not found", path=str(file_path), error=error_msg)
+        raise FileNotFoundError(error_msg) from e
     except Exception as e:
-        logger.error("Excel/CSV processing failed", path=str(file_path), error=str(e))
-        raise
+        error_type = type(e).__name__
+        logger.error(
+            "Excel/CSV processing failed",
+            path=str(file_path),
+            error_type=error_type,
+            error=str(e),
+            exc_info=True,
+        )
+        raise RuntimeError(f"Excel/CSV processing failed ({error_type}): {str(e)}") from e
 

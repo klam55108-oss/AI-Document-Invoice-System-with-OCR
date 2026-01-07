@@ -165,6 +165,30 @@ Installs the `pgqueuer` schema into the database for background job processing.
 ./scripts/setup_queue.sh
 ```
 
+### [test_db_connection.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/test_db_connection.py)
+Tests database connection and schema health. Verifies all required tables exist and checks schema version.
+
+**Usage:**
+```bash
+python scripts/test_db_connection.py
+```
+
+### [test_ocr_safe.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/test_ocr_safe.py)
+Safely tests OCR processing on an image file with proper timeouts and resource limits. Useful for debugging OCR issues.
+
+**Usage:**
+```bash
+python scripts/test_ocr_safe.py data/grok/1.jpg
+```
+
+### [check_invoice_status.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/check_invoice_status.py)
+Checks the processing status and error details for a specific invoice by ID.
+
+**Usage:**
+```bash
+python scripts/check_invoice_status.py <invoice_id>
+```
+
 ### [verify_docling.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/verify_docling.py)
 A test script to verify that Docling PDF processing and LLM extraction are working correctly.
 
@@ -181,3 +205,5 @@ python3 scripts/verify_docling.py
 > - Ensure the FastAPI server (`interface/api/main.py`) is running before using `process_invoices.py`.
 > - The database must be accessible and migrated (`alembic upgrade head`) before running maintenance scripts.
 > - Cleanup scripts are destructive; always use `--dry-run` or `--list-only` first if available.
+> - OCR processing may take 30-180 seconds for first-time requests due to model loading.
+> - Use `test_ocr_safe.py` to test OCR processing without risking system crashes.

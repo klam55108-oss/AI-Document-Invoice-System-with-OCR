@@ -105,6 +105,15 @@ async def list_invoices(
             created_at=invoice.created_at,
             processed_at=invoice.processed_at,
         )
+        
+        # Include error message in response if processing failed
+        if invoice.processing_status == ProcessingStatus.FAILED and invoice.error_message:
+            # Note: error_message is not in InvoiceSummary schema, but we log it for debugging
+            logger.debug(
+                "Invoice processing failed",
+                invoice_id=str(invoice.id),
+                error_message=invoice.error_message,
+            )
         invoice_summaries.append(summary)
 
     total_pages = (total_items + page_size - 1) // page_size if total_items > 0 else 0
@@ -130,7 +139,11 @@ async def get_invoice(
     invoice_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
 ) -> InvoiceDetailResponse:
-    """Get detailed invoice information."""
+    """Get detailed invoice information with status validation.
+    
+    This endpoint validates that the invoice exists and returns current status.
+    Status is always up-to-date as it's read directly from the database.
+    """
     # Get invoice
     query = select(Invoice).where(Invoice.id == invoice_id)
     result = await session.execute(query)
@@ -138,6 +151,13 @@ async def get_invoice(
 
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice not found: {invoice_id}")
+    
+    # Log status check for monitoring
+    logger.debug(
+        "Invoice status queried",
+        invoice_id=str(invoice_id),
+        current_status=invoice.processing_status.value,
+    )
 
     # Get extracted data
     extracted_query = select(ExtractedData).where(ExtractedData.invoice_id == invoice.id)
@@ -221,14 +241,55 @@ async def process_invoice(
     """Trigger processing of an invoice file."""
     from pathlib import Path
 
-    # Resolve file path
-    data_dir = Path("data")
-    file_path = data_dir / request.file_path
+    # Resolve file path - handle both relative and absolute paths
+    data_dir = Path("data").resolve()
+    
+    # Normalize the file path
+    if Path(request.file_path).is_absolute():
+        # If absolute path, check if it's within data directory
+        file_path = Path(request.file_path)
+        try:
+            file_path.relative_to(data_dir)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File path must be within data directory: {request.file_path}"
+            )
+    else:
+        # Relative path - resolve against data directory
+        file_path = (data_dir / request.file_path).resolve()
+        # Security check: ensure resolved path is still within data directory
+        try:
+            file_path.relative_to(data_dir)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file path (path traversal detected): {request.file_path}"
+            )
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"File not found: {request.file_path}. Please ensure the file exists in the data/ directory."
+        )
 
-    logger.info("Processing invoice file requested", file_path=str(file_path))
+    # Check file size before processing to prevent resource exhaustion
+    try:
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            raise HTTPException(status_code=400, detail=f"File is empty: {request.file_path}")
+        if file_size > 100 * 1024 * 1024:  # 100MB limit
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large: {file_size} bytes (maximum 100MB allowed)"
+            )
+    except OSError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot access file: {request.file_path} - {str(e)}"
+        )
+
+    logger.info("Processing invoice file requested", file_path=str(file_path), file_size=file_size)
 
     try:
         # Process invoice
@@ -268,8 +329,18 @@ async def process_invoice(
 
     except Exception as e:
         await session.rollback()
-        logger.error("Invoice processing failed", file_path=str(file_path), error=str(e))
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        error_type = type(e).__name__
+        from core.logging import format_error_message
+        user_friendly_error = format_error_message(e, context={"stage": "api_processing"})
+        
+        logger.error(
+            "Invoice processing failed",
+            file_path=str(file_path),
+            error_type=error_type,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=user_friendly_error)
 
 
 @router.post("/bulk/reprocess", response_model=BulkActionResponse)

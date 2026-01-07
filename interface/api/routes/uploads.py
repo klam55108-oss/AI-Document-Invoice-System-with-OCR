@@ -115,6 +115,13 @@ async def process_invoice_background(
     and let it create the real one. The placeholder invoice_id is returned to the client
     for status polling, but the actual processed invoice will have a different ID.
     """
+    logger.info(
+        "Background task started",
+        placeholder_invoice_id=str(placeholder_invoice_id),
+        file_path=file_path,
+        stage="background_task_init",
+    )
+    
     database_url = settings.DATABASE_URL
     if not database_url:
         logger.error("DATABASE_URL not set, cannot process invoice in background", placeholder_invoice_id=str(placeholder_invoice_id))
@@ -155,28 +162,41 @@ async def process_invoice_background(
                 
                 await bg_session.commit()
                 logger.info(
-                    "Background processing completed",
+                    "Background processing completed successfully",
                     placeholder_id=str(placeholder_invoice_id),
                     processed_invoice_id=str(processed_invoice.id),
+                    status=processed_invoice.processing_status.value,
+                    stage="background_task_complete",
                 )
                 
             except Exception as e:
                 await bg_session.rollback()
+                error_type = type(e).__name__
                 logger.error(
                     "Background processing failed",
                     placeholder_id=str(placeholder_invoice_id),
+                    error_type=error_type,
                     error=str(e),
+                    stage="background_task_failed",
                     exc_info=True,
                 )
     except Exception as e:
+        error_type = type(e).__name__
         logger.error(
             "Background task setup failed",
             placeholder_id=str(placeholder_invoice_id),
+            error_type=error_type,
             error=str(e),
+            stage="background_task_setup_failed",
             exc_info=True,
         )
     finally:
         await engine.dispose()
+        logger.debug(
+            "Background task cleanup completed",
+            placeholder_invoice_id=str(placeholder_invoice_id),
+            stage="background_task_cleanup",
+        )
 
 
 @router.post("", response_model=UploadResponse, status_code=202)
@@ -340,15 +360,27 @@ async def upload_files(
             successful += 1
 
         except Exception as e:
-            logger.error("Upload failed", file_name=file_name, error=str(e), exc_info=True)
+            # Error isolation: Log error but continue processing other files
+            error_type = type(e).__name__
+            from core.logging import format_error_message
+            user_friendly_error = format_error_message(e, context={"stage": "file_upload"})
+            
+            logger.error(
+                "Upload failed",
+                file_name=file_name,
+                error_type=error_type,
+                error=str(e),
+                exc_info=True,
+            )
             upload_results.append(
                 UploadItem(
                     file_name=file_name,
                     status="failed",
-                    error_message=f"Upload failed: {str(e)}",
+                    error_message=user_friendly_error,
                 )
             )
             failed += 1
+            # Continue processing other files - error isolation
     
     logger.info(
         "Upload batch completed",
