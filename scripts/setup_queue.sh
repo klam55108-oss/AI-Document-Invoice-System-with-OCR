@@ -3,22 +3,23 @@ set -e
 
 # Load environment variables from .env if it exists
 if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
-if [ -z "$DATABASE_URL" ]; then
-    echo "Error: DATABASE_URL is not set."
-    exit 1
-fi
-
-# Extract connection details from DATABASE_URL
-# postgresql+asyncpg://user:password@host:port/dbname
-# We need to convert it to standard format for pgq CLI or psql if needed
-# pgq CLI actually might take the URL or environment variables
+# Strip +asyncpg if present for compatibility with standard DSN tools
+# pgqueuer CLI uses PGDSN or --pg-dsn
+DSN=$(echo $DATABASE_URL | sed 's/+asyncpg//')
+export PGDSN=$DSN
 
 echo "Installing pgqueuer schema..."
 # Assuming pgqueuer is installed in the current environment
 # We use python -m pgqueuer for reliability
-python -m pgqueuer install --durability balanced
+# If it's already installed, 'install' will fail, so we ignore DuplicateObjectError or use verify
+python -m pgqueuer install --durability balanced 2>/dev/null || echo "pgqueuer might already be installed, verifying..."
 
-echo "pgqueuer schema installed successfully."
+echo "Verifying pgqueuer installation..."
+python -m pgqueuer verify --expect present
+
+echo "pgqueuer schema is healthy and installed successfully."

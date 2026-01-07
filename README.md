@@ -35,18 +35,18 @@ The following Mermaid diagram illustrates the flow of an invoice from ingestion 
 flowchart TD
     A[Input: PDF, Excel, Image] --> B{Universal Ingestion Funnel}
     B -- Excel --> C1[Pandas Agent Parsing]
-    B -- PDF/Image --> C2[Docling / PaddleOCR]
+    B -- PDF/Image --> C2[PaddleOCR / Docling]
     C1 --> D[Structured Extraction Layer]
     C2 --> D
-    D --> E[LlamaIndex Extraction & RAG]
+    D --> E[LLM Extraction (DeepSeek/GPT)]
     E --> F{Validation Agent<br>Math/Logic Check}
     F -- Valid --> G[STP Success:<br>Store in Postgres]
-    F -- Invalid --> H[Agent Retries or<br>Vendor Lookup &#91;RAG&#93;]
+    F -- Invalid --> H[Self-Correction Layer<br>Prompt Refinement]
     H --> E
     F -- Still Invalid --> I[Human-in-the-Loop<br>Review &#91;Streamlit&#93;]
     G --> J[ERP/BI Integration]
     I --> J
-    I -- User Correction --> K[Retrain/Update Agent<br>Extraction Improves]
+    I -- User Correction --> K[Feedback Loop<br>Extraction Improves]
     K --> E
 ```
 
@@ -137,15 +137,13 @@ The Streamlit dashboard (`http://localhost:8501`) provides comprehensive invoice
 
 Once your services are running, you can process invoices in several ways:
 
-#### Option 1: Process All Invoices at Once (Recommended)
-
 Use the provided script to process all invoices:
 
 ```bash
-python scripts/process_all_invoices.py
+python scripts/process_invoices.py
 ```
 
-This will process all `invoice-*.png` files in the `data/` directory and show progress for each file.
+This will process all files in the `data/` directory and show progress for each file.
 
 #### Option 2: Process Individual Invoices via API
 
@@ -189,11 +187,11 @@ curl -X POST "http://localhost:8000/api/v1/invoices/process" \
 
 Each invoice goes through these stages:
 1. **File Ingestion**: File is read and hashed (SHA-256) for duplicate detection
-2. **OCR/Text Extraction**: Image/PDF is processed to extract text (PaddleOCR for images)
-3. **AI Extraction**: Structured data is extracted using LlamaIndex RAG (vendor, amounts, dates, etc.)
-4. **Validation**: Business rules are checked (math validation, date consistency, etc.)
-5. **Self-Correction**: If validation fails, AI attempts to refine extraction
-6. **Storage**: Results are stored in PostgreSQL
+2. **OCR/Text Extraction**: Image/PDF is processed to extract text (PaddleOCR for images, Docling for PDFs)
+3. **AI Extraction**: Structured data is extracted using DeepSeek-chat with manual JSON parsing for reliability (vendor, amounts, dates, etc.)
+4. **Validation**: Business rules are checked (math validation, tax rate constraints, etc.)
+5. **Self-Correction**: If validation fails, the system attempts to refine extraction by capping confidence and adjusting math logic
+6. **Storage**: Results are stored in PostgreSQL with JSON-safe serialization
 
 **Processing Status:**
 - `pending` - Initial state
@@ -274,11 +272,18 @@ Each invoice goes through these stages:
 - Status tracking with immediate database commits
 - Performance monitoring (processing time tracking)
 
-**🚧 In Progress / Planned:**
+**✅ Completed (Agentic Phase):**
 - Docling integration for advanced PDF processing
-- LlamaIndex RAG integration for agentic extraction
-- pgqueuer extension setup for job queue management
-- Enhanced validation rules and self-correcting intelligence
+- DeepSeek-chat integration as primary extraction LLM
+- pgqueuer setup for background job management
+- Enhanced validation rules (Tax rate auto-detection, Line item math fallback)
+- Chatbot engine for conversational invoice querying
+- Robust transaction management with explicit rollbacks
+
+**🚧 Future Roadmap:**
+- Multi-agent coordination for complex multi-page document reconciliation
+- Integration with external ERP (Odoo/SAP) APIs
+- Enhanced local embedding model performance tuning
 
 ## 📚 Documentation
 

@@ -1,1 +1,20 @@
-Generic single-database configuration.
+# Database Migrations (Alembic)
+
+This directory contains the database migration scripts managed by Alembic. 
+
+## Strategy
+We use an asynchronous migration strategy with `SQLAlchemy` and `asyncpg`. Migrations are used to manage schema changes for:
+- Core invoice and extraction tables
+- `pgvector` index metadata
+- `pgqueuer` background job schema
+
+## Usage
+To apply migrations:
+```bash
+alembic upgrade head
+```
+
+To create a new migration:
+```bash
+alembic revision --autogenerate -m "description of changes"
+```

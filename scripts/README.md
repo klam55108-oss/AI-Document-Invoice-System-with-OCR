@@ -2,208 +2,102 @@
 
 This directory contains various utility scripts for setting up the environment, processing invoices, and maintaining the database.
 
-## Processing Scripts
+## 🚀 Processing Scripts
 
-### [process_invoices.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/process_invoices.py)
-The primary script for batch processing invoices. It sends files to the API for OCR extraction and validation.
+### process_invoices.py
+The primary script for batch processing invoices. It walks through a directory and sends files to the AI-eInvoicing engine for extraction and validation.
 
 **Usage:**
 ```bash
 # Process all files in data/
 python3 scripts/process_invoices.py
 
-# Process a specific directory
-python3 scripts/process_invoices.py --dir data/jimeng
+# Process a specific subdirectory
+python3 scripts/process_invoices.py --dir data/grok
 
-# Search recursively and use a glob pattern
+# Search recursively for specific patterns
 python3 scripts/process_invoices.py --dir data/ --pattern "*.png" --recursive
 
 # Force reprocessing of already indexed files
 python3 scripts/process_invoices.py --force
 ```
 
-**Arguments:**
-- `--dir`, `-d`: Directory to search (default: `data/`)
-- `--pattern`, `-p`: Glob pattern (default: `*`)
-- `--recursive`, `-r`: Search subdirectories
-- `--force`, `-f`: Force re-processing
-- `--api-url`: API base URL (default: `http://localhost:8000`)
-
 ---
 
-## Maintenance & Cleanup
+## 🔍 Debugging & Inspection
 
-### [reset_all_data.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/reset_all_data.py)
-**Comprehensive script to reset all data: pgvector embeddings, extracted_data, and optionally persistent storage files.**
-
-This is the recommended script for a complete reset. It handles both `cleanup_vectors.py` and `cleanup_invoices.py` in the correct order.
+### inspect_invoice.py
+**The all-in-one tool for checking an invoice's lifecycle.** Shows processing status, error messages, extracted AI data, line items, and validation rule results.
 
 **Usage:**
 ```bash
-# Dry run to see what would be deleted
+# Inspect the most recently processed invoice
+python3 scripts/inspect_invoice.py
+
+# Inspect by specific UUID
+python3 scripts/inspect_invoice.py 550e8400-e29b-41d4-a716-446655440000
+
+# Inspect by partial filename search
+python3 scripts/inspect_invoice.py "grok/1.jpg"
+```
+
+### debug_chatbot.py
+Diagnoses data availability for the chatbot and allows testing direct queries against the engine.
+
+**Usage:**
+```bash
+# Run data diagnosis only
+python3 scripts/debug_chatbot.py
+
+# Run diagnosis and test a specific query
+python3 scripts/debug_chatbot.py "how many invoices are there from grok?"
+```
+
+### diagnose_ocr.py
+Isolated test for the PaddleOCR engine. Prints raw text and diagnostic info to verify if the OCR can see specific keywords (like "销售方").
+
+**Usage:**
+```bash
+python3 scripts/diagnose_ocr.py data/samples/invoice.png
+```
+
+---
+
+## 🧹 Maintenance & Reset
+
+### reset_all_data.py
+**Comprehensive script to reset everything.** Cleans up vector embeddings, database records, and optionally persistent storage files.
+
+**Usage:**
+```bash
+# Dry run (safe)
 python3 scripts/reset_all_data.py --dry-run
 
-# Reset database only (pgvector + extracted_data)
+# Full database reset
 python3 scripts/reset_all_data.py
 
-# Reset database + persistent storage files
+# Reset database + delete files in data/ directory
 python3 scripts/reset_all_data.py --cleanup-files
-
-# Selective cleanup (only vectors, keep extracted_data)
-python3 scripts/reset_all_data.py --no-extracted
-
-# Selective cleanup (only extracted_data, keep vectors)
-python3 scripts/reset_all_data.py --no-vectors
 ```
 
-**What it cleans:**
-- ✅ pgvector embeddings (`invoice_embeddings` table)
-- ✅ Invoice tables (`invoices`, `extracted_data`, `validation_results`, `processing_jobs`)
-- ✅ Optional: Persistent storage files in `data/` directory (with `--cleanup-files`)
+### cleanup_vectors.py
+Cleans up pgvector embeddings and LlamaIndex-related tables only. Useful if you want to re-train/re-embed without losing invoice metadata.
+
+### cleanup_invoices.py
+Cleans up relational invoice data while leaving embeddings intact.
 
 ---
 
-### [cleanup_vectors.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/cleanup_vectors.py)
-**Cleans up pgvector embeddings and vector-related tables only.**
+## 🛠 Setup & Infrastructure
 
-Deletes:
-- `invoice_embeddings` table (pgvector embeddings)
-- Any tables with `vector` type columns
-- LlamaIndex tables (`data_*`, `vector_store_*`, `llama_*`)
+### setup.sh
+Initializes the environment, installs dependencies, and starts Docker services.
 
-**Does NOT touch:**
-- Invoice tables (`invoices`, `extracted_data`, etc.)
-- Validation results
-- Processing jobs
+### setup_queue.sh
+Sets up the `pgqueuer` schema for background job processing.
 
-**Usage:**
-```bash
-# List vector tables without deleting
-python3 scripts/cleanup_vectors.py --list-only
+### restart_api.sh
+Quick helper to find and restart the FastAPI server.
 
-# Clear all vector data
-python3 scripts/cleanup_vectors.py
-```
-
-**When to use:**
-- When you want to reset embeddings but keep invoice data
-- When you need to re-embed all invoices with a new model
-
----
-
-### [cleanup_invoices.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/cleanup_invoices.py)
-**Cleans up invoice-related relational data only.**
-
-Deletes:
-- `invoices` table
-- `extracted_data` table
-- `validation_results` table
-- `processing_jobs` table
-
-**Does NOT touch:**
-- pgvector/embeddings tables
-- Vector data
-
-**Usage:**
-```bash
-# Dry run to see what would be deleted
-python3 scripts/cleanup_invoices.py --dry-run
-
-# Delete all invoice data
-python3 scripts/cleanup_invoices.py
-
-# Delete invoices matching a storage path pattern
-python3 scripts/cleanup_invoices.py --file-path-filter "jimeng/"
-```
-
-**When to use:**
-- When you want to reset invoice data but keep embeddings
-- When you need to clean up specific invoices by storage path pattern
-
----
-
-### Which Script to Use?
-
-| Scenario | Recommended Script |
-|----------|-------------------|
-| **Complete reset** (everything) | `reset_all_data.py` |
-| **Reset embeddings only** (keep invoices) | `cleanup_vectors.py` |
-| **Reset invoices only** (keep embeddings) | `cleanup_invoices.py` |
-| **Selective cleanup** (specific invoices) | `cleanup_invoices.py --file-path-filter` |
-
-### Recommended Order (if running separately)
-
-If you need to run `cleanup_vectors.py` and `cleanup_invoices.py` separately:
-
-1. **First**: Run `cleanup_vectors.py` (clean embeddings)
-2. **Then**: Run `cleanup_invoices.py` (clean invoice data)
-
-**Why this order?**
-- Embeddings reference invoices (via `invoice_id`), so cleaning vectors first avoids orphaned references
-- Vectors are typically larger and slower to delete
-- Logical flow: remove derived data (embeddings) before source data (invoices)
-
-**However**, the order doesn't matter for data integrity - both scripts handle foreign key constraints correctly. For convenience, use `reset_all_data.py` which does both in the correct order automatically.
-
----
-
-## Setup & Verification
-
-### [setup.sh](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/setup.sh)
-Initializes the development environment, creates a virtualenv, installs dependencies, and starts the database via Docker.
-
-**Usage:**
-```bash
-./scripts/setup.sh
-```
-
-### [setup_queue.sh](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/setup_queue.sh)
-Installs the `pgqueuer` schema into the database for background job processing.
-
-**Usage:**
-```bash
-./scripts/setup_queue.sh
-```
-
-### [test_db_connection.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/test_db_connection.py)
-Tests database connection and schema health. Verifies all required tables exist and checks schema version.
-
-**Usage:**
-```bash
-python scripts/test_db_connection.py
-```
-
-### [test_ocr_safe.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/test_ocr_safe.py)
-Safely tests OCR processing on an image file with proper timeouts and resource limits. Useful for debugging OCR issues.
-
-**Usage:**
-```bash
-python scripts/test_ocr_safe.py data/grok/1.jpg
-```
-
-### [check_invoice_status.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/check_invoice_status.py)
-Checks the processing status and error details for a specific invoice by ID.
-
-**Usage:**
-```bash
-python scripts/check_invoice_status.py <invoice_id>
-```
-
-### [verify_docling.py](file:///Users/william.jiang/my-apps/ai-einvoicing/scripts/verify_docling.py)
-A test script to verify that Docling PDF processing and LLM extraction are working correctly.
-
-**Usage:**
-```bash
-python3 scripts/verify_docling.py
-```
-
----
-
-## Important Notices
-
-> [!IMPORTANT]
-> - Ensure the FastAPI server (`interface/api/main.py`) is running before using `process_invoices.py`.
-> - The database must be accessible and migrated (`alembic upgrade head`) before running maintenance scripts.
-> - Cleanup scripts are destructive; always use `--dry-run` or `--list-only` first if available.
-> - OCR processing may take 30-180 seconds for first-time requests due to model loading.
-> - Use `test_ocr_safe.py` to test OCR processing without risking system crashes.
+### verify_docling.py
+Verifies the PDF structure extraction pipeline using Docling.
