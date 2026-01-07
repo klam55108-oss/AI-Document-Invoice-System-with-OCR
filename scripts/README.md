@@ -20,6 +20,9 @@ python3 scripts/process_invoices.py --dir data/ --pattern "*.png" --recursive
 
 # Force reprocessing of already indexed files
 python3 scripts/process_invoices.py --force
+
+# Process in background via job queue
+python3 scripts/process_invoices.py --background
 ```
 
 ---
@@ -61,6 +64,30 @@ Isolated test for the PaddleOCR engine. Prints raw text and diagnostic info to v
 python3 scripts/diagnose_ocr.py data/samples/invoice.png
 ```
 
+### test_ocr_safe.py
+Safely tests OCR processing on an image file with proper timeouts and resource limits. Useful for debugging OCR issues without risking system crashes.
+
+**Usage:**
+```bash
+python scripts/test_ocr_safe.py data/grok/1.jpg
+```
+
+### check_invoice_status.py
+Checks the processing status and error details for a specific invoice by ID.
+
+**Usage:**
+```bash
+python scripts/check_invoice_status.py <invoice_id>
+```
+
+### test_db_connection.py
+Tests database connection and schema health. Verifies all required tables exist and checks schema version.
+
+**Usage:**
+```bash
+python scripts/test_db_connection.py
+```
+
 ---
 
 ## 🧹 Maintenance & Reset
@@ -86,6 +113,18 @@ Cleans up pgvector embeddings and LlamaIndex-related tables only. Useful if you 
 ### cleanup_invoices.py
 Cleans up relational invoice data while leaving embeddings intact.
 
+**Usage:**
+```bash
+# Dry run to see what would be deleted
+python3 scripts/cleanup_invoices.py --dry-run
+
+# Delete all invoice data
+python3 scripts/cleanup_invoices.py
+
+# Delete invoices matching a storage path pattern
+python3 scripts/cleanup_invoices.py --file-path-filter "jimeng/"
+```
+
 ---
 
 ## 🛠 Setup & Infrastructure
@@ -96,8 +135,26 @@ Initializes the environment, installs dependencies, and starts Docker services.
 ### setup_queue.sh
 Sets up the `pgqueuer` schema for background job processing.
 
+**Usage:**
+```bash
+./scripts/setup_queue.sh
+```
+
 ### restart_api.sh
 Quick helper to find and restart the FastAPI server.
 
 ### verify_docling.py
-Verifies the PDF structure extraction pipeline using Docling.
+A test script to verify that Docling PDF processing and LLM extraction are working correctly.
+
+**Usage:**
+```bash
+python3 scripts/verify_docling.py
+```
+
+---
+
+> [!IMPORTANT]
+> - Ensure the FastAPI server (`interface/api/main.py`) is running before using `process_invoices.py`.
+> - The database must be accessible and migrated (`alembic upgrade head`) before running maintenance scripts.
+> - Cleanup scripts are destructive; always use `--dry-run` or `--list-only` first if available.
+> - OCR processing may take 30-180 seconds for first-time requests due to model loading.

@@ -166,7 +166,6 @@ async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
         )
         raise RuntimeError(f"PDF processing failed ({error_type}): {str(e)}") from e
 
-
 async def _process_pdf_with_ocr(file_path: Path) -> dict[str, Any]:
     """Process PDF by converting pages to images and running OCR.
 
