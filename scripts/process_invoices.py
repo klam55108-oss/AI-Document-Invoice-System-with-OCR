@@ -127,7 +127,15 @@ async def process_invoices(
         if result.get("status") == "success":
             invoice_id = result.get("data", {}).get("invoice_id", "N/A")
             status = result.get("data", {}).get("status", "N/A")
-            print(f"✅ Success (ID: {invoice_id[:8]}..., Status: {status})")
+            print(f"✅ Success (ID: {invoice_id[:8] if invoice_id != 'N/A' else 'N/A'}..., Status: {status})")
+        elif result.get("status") == "error":
+            error_detail = result.get("error", "Unknown error")
+            # Try to extract more details from error response
+            if isinstance(error_detail, dict):
+                error_msg = error_detail.get("detail", error_detail.get("message", str(error_detail)))
+            else:
+                error_msg = str(error_detail)
+            print(f"❌ Failed: {error_msg}")
         else:
             error_msg = result.get("error", "Unknown error")
             print(f"❌ Failed: {error_msg}")

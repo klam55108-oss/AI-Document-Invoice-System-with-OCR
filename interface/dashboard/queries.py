@@ -8,7 +8,10 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine, async_sessionmaker
 
+from core.logging import get_logger
 from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult, ValidationStatus
+
+logger = get_logger(__name__)
 
 # Global engine and session factory (shared across requests)
 _engine: AsyncEngine | None = None
@@ -192,9 +195,18 @@ async def get_invoice_list(
                 invoices = list(result.scalars().all())
                 await session.commit()
                 return invoices
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                # Log error with context for debugging
+                logger.error(
+                    "Failed to retrieve invoice list",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    status=status.value if status else None,
+                    search_query=search_query,
+                )
+                # Re-raise with user-friendly message
+                raise RuntimeError(f"Failed to retrieve invoices: {str(e)}") from e
     finally:
         # Dispose engine when done (cleans up connections for this event loop)
         await engine.dispose()
@@ -310,9 +322,15 @@ async def get_invoice_detail(invoice_id: UUID) -> dict | None:
 
                 await session.commit()
                 return result
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                logger.error(
+                    "Failed to retrieve invoice detail",
+                    invoice_id=str(invoice_id),
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise RuntimeError(f"Failed to retrieve invoice details: {str(e)}") from e
     finally:
         # Dispose engine when done (cleans up connections for this event loop)
         await engine.dispose()
@@ -368,9 +386,14 @@ async def get_status_distribution() -> dict[str, int]:
 
                 await session.commit()
                 return status_counts
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                logger.error(
+                    "Failed to retrieve status distribution",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise RuntimeError(f"Failed to retrieve status distribution: {str(e)}") from e
     finally:
         await engine.dispose()
 
@@ -456,9 +479,15 @@ async def get_time_series_data(
 
                 await session.commit()
                 return series_data
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                logger.error(
+                    "Failed to retrieve time series data",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    aggregation=aggregation,
+                )
+                raise RuntimeError(f"Failed to retrieve time series data: {str(e)}") from e
     finally:
         await engine.dispose()
 
@@ -539,9 +568,14 @@ async def get_vendor_analysis_data(
 
                 await session.commit()
                 return vendor_data
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                logger.error(
+                    "Failed to retrieve vendor analysis data",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise RuntimeError(f"Failed to retrieve vendor analysis: {str(e)}") from e
     finally:
         await engine.dispose()
 
@@ -666,9 +700,14 @@ async def get_financial_summary_data() -> dict[str, Any]:
                     "tax_breakdown": tax_breakdown,
                     "currency_distribution": currency_distribution,
                 }
-            except Exception:
+            except Exception as e:
                 await session.rollback()
-                raise
+                logger.error(
+                    "Failed to retrieve financial summary data",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise RuntimeError(f"Failed to retrieve financial summary: {str(e)}") from e
     finally:
         await engine.dispose()
 

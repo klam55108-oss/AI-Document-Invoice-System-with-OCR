@@ -119,9 +119,22 @@ async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
         }
 
     except ImportError:
-        logger.error("pypdf not available, cannot process PDF")
-        raise RuntimeError("No PDF processing library available (docling or pypdf)")
+        error_msg = "No PDF processing library available. Please install either 'docling' or 'pypdf'."
+        logger.error("PDF processing failed - no library available", path=str(file_path), error=error_msg)
+        raise RuntimeError(error_msg) from None
+    except FileNotFoundError as e:
+        error_msg = f"PDF file not found: {file_path}"
+        logger.error("PDF processing failed - file not found", path=str(file_path), error=error_msg)
+        raise FileNotFoundError(error_msg) from e
     except Exception as e:
-        logger.error("PDF fallback processing failed", error=str(e))
-        raise
+        error_type = type(e).__name__
+        error_msg = f"PDF processing failed: {str(e)}"
+        logger.error(
+            "PDF fallback processing failed",
+            path=str(file_path),
+            error_type=error_type,
+            error=str(e),
+            exc_info=True,
+        )
+        raise RuntimeError(f"PDF processing failed ({error_type}): {str(e)}") from e
 

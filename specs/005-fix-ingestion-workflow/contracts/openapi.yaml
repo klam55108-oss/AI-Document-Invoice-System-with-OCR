@@ -1,0 +1,343 @@
+openapi: 3.0.3
+info:
+  title: Fix Ingestion Workflow API
+  version: 1.0.0
+  description: API endpoints for invoice processing workflow fixes
+
+paths:
+  /api/v1/invoices/process:
+    post:
+      summary: Process an invoice file
+      description: |
+        Trigger processing of an invoice file. The file must exist in the data/ directory.
+        Processing includes OCR/text extraction, data extraction, validation, and storage.
+      operationId: processInvoice
+      tags:
+        - Invoices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessInvoiceRequest'
+            examples:
+              basic:
+                value:
+                  file_path: "grok/1.jpg"
+                  force_reprocess: false
+              with_metadata:
+                value:
+                  file_path: "jimeng/invoice-1.png"
+                  category: "Invoice"
+                  group: "jimeng"
+                  force_reprocess: false
+      responses:
+        '202':
+          description: Processing started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessInvoiceResponse'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error:
+                  code: "FILE_NOT_FOUND"
+                  message: "File not found: grok/1.jpg"
+        '500':
+          description: Processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: "error"
+                error:
+                  code: "PROCESSING_FAILED"
+                  message: "Processing failed: [error details]"
+
+  /api/v1/invoices:
+    get:
+      summary: List invoices
+      description: |
+        Get a paginated list of invoices with optional filtering by status.
+        Returns invoice summaries with extracted data when available.
+      operationId: listInvoices
+      tags:
+        - Invoices
+      parameters:
+        - name: status
+          in: query
+          description: Filter by processing status
+          required: false
+          schema:
+            type: string
+            enum: [pending, queued, processing, completed, failed]
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort_by
+          in: query
+          description: Sort field
+          required: false
+          schema:
+            type: string
+            enum: [created_at, processed_at, file_name]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceListResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/invoices/{invoice_id}:
+    get:
+      summary: Get invoice details
+      description: |
+        Get detailed information about a specific invoice, including extracted data
+        and validation results.
+      operationId: getInvoice
+      tags:
+        - Invoices
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          description: Invoice UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoice details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoiceDetailResponse'
+        '404':
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: Health check
+      description: Check API health and database connectivity
+      operationId: healthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    ProcessInvoiceRequest:
+      type: object
+      required:
+        - file_path
+      properties:
+        file_path:
+          type: string
+          description: Relative path to file in data/ directory
+          example: "grok/1.jpg"
+        category:
+          type: string
+          nullable: true
+          description: Logical category (e.g. Invoice, Receipt)
+          example: "Invoice"
+        group:
+          type: string
+          nullable: true
+          description: Logical group/source (e.g. grok, jimeng)
+          example: "grok"
+        job_id:
+          type: string
+          nullable: true
+          description: Batch/Job identifier (UUID)
+          format: uuid
+        force_reprocess:
+          type: boolean
+          description: Force reprocessing even if file hash exists
+          default: false
+
+    ProcessInvoiceResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        data:
+          type: object
+          properties:
+            invoice_id:
+              type: string
+              format: uuid
+              description: Invoice UUID
+            job_id:
+              type: string
+              format: uuid
+              description: Processing job UUID
+            status:
+              type: string
+              enum: [pending, queued, processing, completed, failed]
+              description: Current processing status
+
+    InvoiceSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        storage_path:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        group:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+        file_type:
+          type: string
+          nullable: true
+        processing_status:
+          type: string
+          enum: [pending, queued, processing, completed, failed]
+        vendor_name:
+          type: string
+          nullable: true
+        total_amount:
+          type: number
+          format: float
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    InvoiceListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    InvoiceDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        data:
+          type: object
+          description: Full invoice details including extracted data and validation results
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+        total_items:
+          type: integer
+          minimum: 0
+        total_pages:
+          type: integer
+          minimum: 0
+        has_next:
+          type: boolean
+        has_previous:
+          type: boolean
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              nullable: true
+

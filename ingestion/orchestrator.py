@@ -1,6 +1,7 @@
 """File processing orchestration and version tracking."""
 
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -50,10 +51,26 @@ async def process_invoice_file(
         FileNotFoundError: If file does not exist
     """
     if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+        error_msg = f"File not found: {file_path}"
+        logger.error("File validation failed", file_path=str(file_path), error=error_msg, stage="file_validation")
+        raise FileNotFoundError(error_msg)
 
     if not is_supported_file(file_path):
-        raise ValueError(f"Unsupported file type: {file_path.suffix}")
+        error_msg = f"Unsupported file type: {file_path.suffix}"
+        logger.error("File validation failed", file_path=str(file_path), error=error_msg, stage="file_validation")
+        raise ValueError(error_msg)
+    
+    # Check if file is corrupted or unreadable
+    try:
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            error_msg = f"File is empty: {file_path}"
+            logger.error("File validation failed", file_path=str(file_path), error=error_msg, stage="file_validation")
+            raise ValueError(error_msg)
+    except OSError as e:
+        error_msg = f"Cannot read file: {file_path} - {str(e)}"
+        logger.error("File validation failed", file_path=str(file_path), error=error_msg, stage="file_validation")
+        raise OSError(error_msg) from e
 
     logger.info("Processing invoice file", path=str(file_path))
 
@@ -121,21 +138,80 @@ async def process_invoice_file(
 
     session.add(invoice)
     await session.flush()  # Get invoice ID
+    
+    logger.info(
+        "Invoice record created",
+        invoice_id=str(invoice.id),
+        file_path=str(file_path),
+        status=invoice.processing_status.value,
+        stage="initialization",
+    )
+
+    # Track processing time for performance monitoring
+    processing_start_time = time.time()
 
     try:
-        # Process file based on type
-        if file_type == "pdf":
-            processed_data = await process_pdf(file_path)
-        elif file_type in {"xlsx", "csv"}:
-            processed_data = await process_excel(file_path)
-        elif file_type in {"jpg", "png", "webp", "avif"}:
-            processed_data = await process_image(file_path)
-        else:
-            raise ValueError(f"Unsupported file type: {file_type}")
+        # Process file based on type with retry logic for OCR/Extraction
+        max_retries = 2
+        attempt = 0
+        processed_data = None
+        
+        while attempt < max_retries:
+            attempt += 1
+            try:
+                stage_start = time.time()
+                if file_type == "pdf":
+                    processed_data = await process_pdf(file_path)
+                elif file_type in {"xlsx", "csv"}:
+                    processed_data = await process_excel(file_path)
+                elif file_type in {"jpg", "png", "webp", "avif"}:
+                    logger.info("Triggering image OCR", path=str(file_path), invoice_id=str(invoice.id), attempt=attempt)
+                    processed_data = await process_image(file_path)
+                else:
+                    raise ValueError(f"Unsupported file type: {file_type}")
+                
+                stage_duration = time.time() - stage_start
+                logger.info(
+                    "File processing completed",
+                    invoice_id=str(invoice.id),
+                    text_length=len(processed_data.get("text", "")),
+                    duration_seconds=round(stage_duration, 2),
+                    attempt=attempt,
+                    stage="file_processing",
+                )
+                break
+            except RuntimeError as e:
+                # Retry specifically for RuntimeErrors (like timeouts) which may be due to cold start
+                if attempt < max_retries and "timeout" in str(e).lower():
+                    logger.warning(
+                        "OCR timed out, retrying...",
+                        invoice_id=str(invoice.id),
+                        attempt=attempt,
+                        error=str(e)
+                    )
+                    continue
+                raise
 
         # Extract structured data
+        logger.info(
+            "Starting data extraction",
+            invoice_id=str(invoice.id),
+            stage="data_extraction",
+        )
+        extraction_start = time.time()
         raw_text = processed_data.get("text", "")
         extracted_data = await extract_invoice_data(raw_text, processed_data.get("metadata"))
+        extraction_duration = time.time() - extraction_start
+        
+        logger.info(
+            "Data extraction completed",
+            invoice_id=str(invoice.id),
+            vendor=extracted_data.vendor_name,
+            invoice_number=extracted_data.invoice_number,
+            total_amount=str(extracted_data.total_amount) if extracted_data.total_amount else None,
+            duration_seconds=round(extraction_duration, 2),
+            stage="data_extraction",
+        )
 
         # Create extracted data record
         extracted_record = ExtractedData(
@@ -157,12 +233,34 @@ async def process_invoice_file(
 
         session.add(extracted_record)
         await session.flush()
+        
+        logger.info(
+            "Extracted data stored",
+            invoice_id=str(invoice.id),
+            extracted_data_id=str(extracted_record.id),
+            stage="data_storage",
+        )
 
         # Run validation rules
+        logger.info(
+            "Starting validation",
+            invoice_id=str(invoice.id),
+            stage="validation",
+        )
         validation_framework = get_validation_framework()
         validation_results = await validation_framework.validate(extracted_data)
+        
+        logger.info(
+            "Validation completed",
+            invoice_id=str(invoice.id),
+            total_validations=len(validation_results),
+            passed_validations=sum(1 for r in validation_results if r.status == "passed"),
+            failed_validations=sum(1 for r in validation_results if r.status == "failed"),
+            stage="validation",
+        )
 
         # Store validation results
+        validation_count = 0
         for result in validation_results:
             validation_record = ValidationResult(
                 id=uuid.uuid4(),
@@ -176,6 +274,39 @@ async def process_invoice_file(
                 error_message=result.error_message,
             )
             session.add(validation_record)
+            validation_count += 1
+        
+        await session.flush()
+        
+        # Validate that extracted data was stored
+        from sqlalchemy import select
+        extracted_check = await session.execute(
+            select(ExtractedData).where(ExtractedData.invoice_id == invoice.id)
+        )
+        stored_extracted = extracted_check.scalar_one_or_none()
+        if not stored_extracted:
+            raise RuntimeError("Extracted data was not stored correctly")
+        
+        # Validate that validation results were stored
+        validation_check = await session.execute(
+            select(ValidationResult).where(ValidationResult.invoice_id == invoice.id)
+        )
+        stored_validations = validation_check.scalars().all()
+        if len(stored_validations) != validation_count:
+            logger.warning(
+                "Validation count mismatch",
+                invoice_id=str(invoice.id),
+                expected=validation_count,
+                stored=len(stored_validations),
+            )
+        
+        logger.info(
+            "Validation results stored",
+            invoice_id=str(invoice.id),
+            validation_count=validation_count,
+            stored_count=len(stored_validations),
+            stage="validation_storage",
+        )
 
         # Self-correction intelligence: If critical validations failed, try refining
         failed_validations = [r for r in validation_results if r.status == "failed"]
@@ -220,16 +351,27 @@ async def process_invoice_file(
                 session.add(refined_validation_record)
 
         # Update invoice status
+        from datetime import datetime, timezone
+        
         invoice.processing_status = ProcessingStatus.COMPLETED
-        from datetime import datetime
-
-        invoice.processed_at = datetime.utcnow()
-
+        invoice.processed_at = datetime.now(timezone.utc)
+        
+        # Commit status update immediately to ensure accurate status tracking
+        await session.commit()
+        
+        # Calculate and log successful completion with details
+        processing_duration = time.time() - processing_start_time
+        
         logger.info(
-            "Invoice processing completed",
+            "Invoice processing completed successfully",
             invoice_id=str(invoice.id),
+            file_name=invoice.file_name,
+            version=invoice.version,
+            status=invoice.processing_status.value,
             validations=len(validation_results),
             failed_validations=sum(1 for r in validation_results if r.status == "failed"),
+            processing_duration_seconds=round(processing_duration, 2),
+            stage="completion",
         )
 
         return invoice
@@ -240,20 +382,44 @@ async def process_invoice_file(
         import traceback
 
         error_traceback = traceback.format_exc()
+        error_type = type(e).__name__
+        
+        # Determine processing stage from error context
+        processing_stage = "unknown"
+        if "file_path" in locals() and file_path:
+            if not file_path.exists():
+                processing_stage = "file_validation"
+            elif file_type:
+                if file_type == "pdf":
+                    processing_stage = "pdf_processing"
+                elif file_type in {"xlsx", "csv"}:
+                    processing_stage = "excel_processing"
+                elif file_type in {"jpg", "png", "webp", "avif"}:
+                    processing_stage = "image_processing"
+                else:
+                    processing_stage = "file_processing"
+        
         logger.error(
             "Invoice processing failed",
             invoice_id=str(invoice.id),
             file_path=str(file_path),
+            file_type=file_type if 'file_type' in locals() else None,
+            file_hash=file_hash if 'file_hash' in locals() else None,
+            processing_stage=processing_stage,
+            error_type=error_type,
             error=str(e),
             traceback=error_traceback,
+            force_reprocess=force_reprocess,
         )
 
         invoice.processing_status = ProcessingStatus.FAILED
-        invoice.error_message = str(e)
+        # Use formatted error message with stage information
+        from core.logging import format_error_message
+        invoice.error_message = format_error_message(e, context={"stage": processing_stage})
 
         # Create failed processing job record
         from core.models import ProcessingJob, JobType, ExecutionType
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         failed_job = ProcessingJob(
             id=uuid.uuid4(),
@@ -263,7 +429,7 @@ async def process_invoice_file(
             status=ProcessingStatus.FAILED,
             error_message=str(e),
             error_traceback=error_traceback,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
         )
         session.add(failed_job)
 

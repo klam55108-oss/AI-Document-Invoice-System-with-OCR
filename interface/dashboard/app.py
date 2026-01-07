@@ -230,8 +230,20 @@ def display_invoice_list(
             )
         )
     except Exception as e:
-        st.error(f"Error loading invoices: {str(e)}")
-        logger.error("Failed to load invoices", error=str(e), exc_info=True)
+        error_type = type(e).__name__
+        error_msg = str(e)
+        
+        # Provide user-friendly error messages
+        if "DATABASE_URL" in error_msg or "connection" in error_msg.lower():
+            st.error("❌ Database connection error. Please check your database configuration.")
+            st.info("💡 Tip: Verify your `.env` file contains a valid `DATABASE_URL`.")
+        elif "Failed to retrieve invoices" in error_msg:
+            st.error(f"❌ Failed to load invoices: {error_msg}")
+            st.info("💡 Tip: Check database logs for more details.")
+        else:
+            st.error(f"❌ Error loading invoices: {error_msg}")
+        
+        logger.error("Failed to load invoices", error=str(e), error_type=error_type, exc_info=True)
         return
 
     if not invoices:
@@ -242,7 +254,8 @@ def display_invoice_list(
     try:
         all_invoices = asyncio.run(get_invoice_list(None))
     except Exception as e:
-        st.error(f"Error loading global metrics: {str(e)}")
+        logger.warning("Failed to load global metrics, continuing without them", error=str(e))
+        # Don't show error to user for metrics - just continue without them
         all_invoices = []
 
     # Display status summary metrics (Global)

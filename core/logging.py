@@ -66,3 +66,40 @@ def filter_sensitive_data(logger: Any, method_name: str, event_dict: dict) -> di
 
     return event_dict
 
+
+def format_error_message(error: Exception, context: dict[str, Any] | None = None) -> str:
+    """Format error message for user-friendly display.
+    
+    Args:
+        error: Exception that occurred
+        context: Additional context about where the error occurred
+        
+    Returns:
+        User-friendly error message
+    """
+    error_type = type(error).__name__
+    error_msg = str(error)
+    
+    # Map common error types to user-friendly messages
+    error_mappings = {
+        "FileNotFoundError": "File not found",
+        "ValueError": "Invalid input",
+        "PermissionError": "Permission denied",
+        "ConnectionError": "Database connection failed",
+        "TimeoutError": "Operation timed out",
+    }
+    
+    base_message = error_mappings.get(error_type, f"Error: {error_type}")
+    
+    # Add context if provided
+    if context:
+        stage = context.get("stage", "processing")
+        if stage:
+            base_message = f"{base_message} during {stage}"
+    
+    # Add specific error details if available and not too technical
+    if error_msg and len(error_msg) < 200:
+        base_message = f"{base_message}: {error_msg}"
+    
+    return base_message
+
