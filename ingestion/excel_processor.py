@@ -41,9 +41,15 @@ async def process_excel(file_path: Path) -> dict[str, Any]:
         # Convert to text representation
         text_parts = []
         for sheet_name, df in dataframes.items():
-            text_parts.append(f"Sheet: {sheet_name}\n")
-            text_parts.append(df.to_string())
-            text_parts.append("\n")
+            text_parts.append(f"Sheet: {sheet_name}")
+            text_parts.append("-" * 30)
+            # Use to_markdown for better tabular structure if tabulate is installed
+            # Fallback to to_string with clear spacing
+            try:
+                text_parts.append(df.to_markdown(index=False))
+            except Exception:
+                text_parts.append(df.to_string(index=False))
+            text_parts.append("-" * 30 + "\n")
 
         text_content = "\n".join(text_parts)
 

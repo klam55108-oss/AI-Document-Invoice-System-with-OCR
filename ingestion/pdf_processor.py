@@ -17,6 +17,14 @@ except ImportError:
     DOCLING_AVAILABLE = False
     logger.warning("Docling not available, PDF processing will be limited")
 
+# PyMuPDF for PDF to image conversion (fallback OCR path)
+try:
+    import fitz
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+    logger.warning("PyMuPDF (fitz) not available, OCR fallback for PDF will be disabled")
+
 
 async def process_pdf(file_path: Path) -> dict[str, Any]:
     """Process PDF file and extract text.
@@ -82,6 +90,26 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
         logger.error("PDF processing failed with Docling, trying fallback", error=str(e))
         return await _process_pdf_fallback(file_path)
 
+    # If extracted text is very short, it might be an image PDF that Docling OCR missed or processed poorly
+    if len(text_content.strip()) < 100:
+        logger.warning("Docling extracted very little text, trying OCR fallback", path=str(file_path), text_length=len(text_content))
+        ocr_result = await _process_pdf_with_ocr(file_path)
+        if len(ocr_result.get("text", "")) > len(text_content):
+            logger.info("OCR fallback provided more text, using it instead of Docling result")
+            return ocr_result
+
+    return {
+        "text": text_content,
+        "pages": pages,
+        "tables": tables,
+        "metadata": {
+            "file_path": str(file_path),
+            "file_size": file_path.stat().st_size,
+            "processor": "docling",
+            "format": "markdown",
+        },
+    }
+
 
 async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
     """Fallback PDF processing using pypdf.
@@ -137,4 +165,58 @@ async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
             exc_info=True,
         )
         raise RuntimeError(f"PDF processing failed ({error_type}): {str(e)}") from e
+
+
+async def _process_pdf_with_ocr(file_path: Path) -> dict[str, Any]:
+    """Process PDF by converting pages to images and running OCR.
+
+    Args:
+        file_path: Path to PDF file
+
+    Returns:
+        Dictionary with extracted text
+    """
+    if not PYMUPDF_AVAILABLE:
+        logger.warning("PyMuPDF not available for OCR fallback")
+        return {"text": "", "pages": 0, "metadata": {}}
+
+    try:
+        import tempfile
+        import os
+        from ingestion.image_processor import process_image
+
+        logger.info("Starting OCR fallback for PDF", path=str(file_path))
+        doc = fitz.open(str(file_path))
+        full_text = []
+        pages = len(doc)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for i in range(pages):
+                page = doc.load_page(i)
+                # Render page to high-res image (300 DPI)
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                temp_image_path = Path(temp_dir) / f"page_{i}.png"
+                pix.save(str(temp_image_path))
+
+                # Run OCR on the page image
+                ocr_result = await process_image(temp_image_path)
+                if ocr_result.get("text"):
+                    full_text.append(f"--- PAGE {i+1} ---\n" + ocr_result["text"])
+
+        doc.close()
+        combined_text = "\n\n".join(full_text)
+
+        return {
+            "text": combined_text,
+            "pages": pages,
+            "metadata": {
+                "file_path": str(file_path),
+                "file_size": file_path.stat().st_size,
+                "processor": "paddleocr_fallback",
+            },
+        }
+
+    except Exception as e:
+        logger.error("OCR fallback for PDF failed", path=str(file_path), error=str(e), exc_info=True)
+        return {"text": "", "pages": 0, "metadata": {}}
 

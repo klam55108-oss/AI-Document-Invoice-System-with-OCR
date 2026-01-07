@@ -1,6 +1,7 @@
 """Basic data extraction logic mapping raw text to structured data."""
 
 from typing import Any
+from pathlib import Path
 from llama_index.core import Document, VectorStoreIndex, SummaryIndex
 from llama_index.llms.openai import OpenAI
 from llama_index.core.program import LLMTextCompletionProgram
@@ -68,16 +69,21 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
             "}\n"
             "\n"
             "CRITICAL EXTRACTION RULES:\n"
-            "- vendor_name: MUST extract from 销售方 (seller/vendor) field for Chinese invoices.\n"
-            "- Extract all amounts as numbers.\n"
-            "- Ensure dates are in YYYY-MM-DD format.\n"
+            "- vendor_name: MUST extract the seller/vendor name. Look for labels like 'Vendor:', 'Seller:', 'Business Name:', '销售方', 'FUME:', 'PRICE:', or company names in the header. If a line looks like an address but has a name above or beside it, that name is usually the vendor.\n"
+            "- Extract all amounts as numbers. Ignore currency symbols or commas.\n"
+            "- Ensure dates are in YYYY-MM-DD format. If only month/year or other partial dates, try to infer or set null if ambiguous.\n"
             "- RESOLVE CONFLICTING TOTALS: If the document contains multiple totals (e.g., Subtotal vs Pay Amount), "
-            "choose the values that are mathematically consistent (Subtotal + Tax = Total).\n"
+            "choose the values that are mathematically consistent (Subtotal + Tax = Total). Use line item sums as a hint if subtotal is messy.\n"
+            "- OCR NOISE: The text might contain misread characters (e.g. '0' for 'O', 'I' for '1'). Use context to correct these.\n"
+            "- TABULAR DATA: Map line item columns correctly. Description, Quantity, Unit Price, and Amount are common.\n"
         )
 
         user_content = f"RAW TEXT FROM DOCUMENT:\n---------------------\n{raw_text}\n---------------------\n"
         if metadata:
-            user_content += f"Metadata: {metadata}"
+            # Format metadata nicely for the LLM to use as hints
+            file_name = metadata.get("file_name") or (Path(metadata["file_path"]).name if "file_path" in metadata else "N/A")
+            user_content += f"\nADDITIONAL METADATA HINTS:\nFilename: {file_name}\n"
+            user_content += f"\nHint: If vendor_name is not clear in raw text, use the filename '{file_name}' (strip extension and numbers) as a fallback for vendor_name.\n"
 
         # Execute extraction using standard chat completion
         response = client.chat.completions.create(
@@ -151,25 +157,64 @@ async def refine_extraction(
     )
     logger.info("Refining extraction based on validation errors", error_count=len(validation_errors))
 
-    # In a real implementation, this would call an LLM with a prompt like:
-    # "The previous extraction failed these validations: {error_summary}.
-    # Here is the raw text: {raw_text}. Please correct the fields."
+    try:
+        import openai
+        import json
+        
+        if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
+            client = openai.OpenAI(
+                api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
+                base_url="https://api.deepseek.com/v1"
+            )
+        else:
+            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
-    # For the scaffold, we'll simulate a "correction" if confidence was low
-    refined_data = previous_data.model_copy()
+        system_prompt = (
+            "You are an expert invoice processing agent. A previous extraction attempt failed some validation checks.\n"
+            "Your task is to re-examine the raw text and the previously extracted (incorrect) data, then provide a corrected version.\n"
+            "\n"
+            "VALIDATION FAILURES TO FIX:\n"
+            f"{error_summary}\n"
+            "\n"
+            "Return ONLY a valid JSON object following the standard invoice structure."
+        )
 
-    # Simulate correction of a common math error or date error
-    for error in validation_errors:
-        if error.rule_name == "math_check_subtotal_tax" and error.status == "failed":
-            # If subtotal + tax != total, and total looks like a sum of subtotal + tax elsewhere
-            # we might "correct" it. Here we just log the attempt.
-            logger.info("Correction logic would trigger for math error", rule=error.rule_name)
-        elif error.rule_name == "date_consistency" and error.status == "failed":
-            logger.info("Correction logic would trigger for date error", rule=error.rule_name)
+        user_content = (
+            f"PREVIOUS DATA:\n{previous_data.model_dump_json(indent=2)}\n\n"
+            f"RAW TEXT FROM DOCUMENT:\n---------------------\n{raw_text}\n---------------------\n"
+        )
 
-    # Increase confidence slightly to indicate "refined", but cap at 1.0
-    current_conf = refined_data.extraction_confidence or Decimal("0")
-    refined_data.extraction_confidence = min(current_conf + Decimal("0.1"), Decimal("1.0"))
+        response = client.chat.completions.create(
+            model=settings.LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.1,  # Lower temperature for refinement
+        )
 
-    return refined_data
+        content = response.choices[0].message.content
+        if not content:
+            return previous_data
+
+        json_str = content.strip()
+        if json_str.startswith("```json"):
+            json_str = json_str.split("```json")[1].split("```")[0].strip()
+        elif json_str.startswith("```"):
+            json_str = json_str.split("```")[1].split("```")[0].strip()
+
+        data = json.loads(json_str)
+        refined_data = ExtractedDataSchema(**data)
+        refined_data.raw_text = raw_text
+        
+        # Increase confidence slightly to indicate "refined", but cap at 1.0
+        current_conf = previous_data.extraction_confidence or Decimal("0")
+        refined_data.extraction_confidence = min(current_conf + Decimal("0.05"), Decimal("1.0"))
+        
+        logger.info("Extraction refinement successful")
+        return refined_data
+
+    except Exception as e:
+        logger.error("Extraction refinement failed", error=str(e))
+        return previous_data
 

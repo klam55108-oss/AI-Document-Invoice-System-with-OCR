@@ -94,6 +94,10 @@ class Invoice(Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     upload_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    
+    # Metadata columns (added in migration 925498b15ac8)
+    file_preview_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    processing_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     extracted_data: Mapped["ExtractedData | None"] = relationship(
@@ -114,7 +118,7 @@ class Invoice(Base):
             "file_hash ~ '^[a-f0-9]{64}$'", name="check_file_hash_format"
         ),
         CheckConstraint(
-            "file_type IN ('pdf', 'xlsx', 'csv', 'xls', 'jpg', 'jpeg', 'png')",
+            "file_type IN ('pdf', 'xlsx', 'csv', 'xls', 'jpg', 'jpeg', 'png', 'webp', 'avif')",
             name="check_file_type",
         ),
         CheckConstraint("version >= 1", name="check_version_positive"),
@@ -150,6 +154,15 @@ class ExtractedData(Base):
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    
+    # Per-field confidence scores (added in migration 925498b15ac8)
+    vendor_name_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    invoice_number_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    invoice_date_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    total_amount_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    subtotal_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    tax_amount_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
+    currency_confidence: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
 
     # Relationships
     invoice: Mapped["Invoice"] = relationship("Invoice", back_populates="extracted_data")

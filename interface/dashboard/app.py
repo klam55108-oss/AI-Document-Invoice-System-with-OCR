@@ -34,6 +34,11 @@ from interface.dashboard.utils.data_formatters import (
 )
 from interface.dashboard.utils.path_resolver import resolve_file_path
 from interface.dashboard.components.chatbot import render_chatbot_tab
+from interface.dashboard.components.quality_dashboard import render_quality_dashboard
+from interface.dashboard.components.file_preview import (
+    render_file_preview,
+    render_extracted_data_with_confidence,
+)
 
 # Configure logging
 configure_logging(log_level="INFO", log_format="json")
@@ -94,7 +99,7 @@ def main():
     init_db_connection()
 
     # Main content
-    tab1, tab2, tab3, tab4 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files", "Chatbot"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files", "Chatbot", "Quality Metrics"])
 
     # Sidebar filters
     with st.sidebar:
@@ -185,6 +190,15 @@ def main():
 
     with tab4:
         render_chatbot_tab()
+    
+    with tab5:
+        # Get session for quality dashboard
+        async def get_session_for_quality():
+            async with _session_factory() as session:
+                render_quality_dashboard(session)
+        
+        import asyncio
+        asyncio.run(get_session_for_quality())
 
 
 def display_invoice_list(
@@ -607,7 +621,7 @@ def display_invoice_list(
             "Confidence": st.column_config.ProgressColumn(
                 "Confidence",
                 help="Extraction confidence score",
-                format="%.0f%%",
+                format="%.1f%%",
                 min_value=0,
                 max_value=1,
             ),
@@ -822,158 +836,31 @@ def display_invoice_detail(preselected_id: str = None):
 
         with col3:
             st.subheader("📄 File Preview")
-            storage_path = invoice_detail.get("storage_path")
-            file_hash = invoice_detail.get("file_hash")
-            file_type = invoice_detail.get("file_type", "").lower()
-            
-            # Initialize session state for image modal
-            image_modal_key = f"image_modal_{invoice_detail.get('id', 'default')}"
-            if image_modal_key not in st.session_state:
-                st.session_state[image_modal_key] = False
-            
-            if storage_path:
-                # Use path resolver to find file in data/ or data/encrypted/
-                resolved = resolve_file_path(storage_path, file_hash=file_hash, data_dir="data")
-                
-                if resolved["exists"] and resolved["resolved_path"]:
-                    resolved_path = resolved["resolved_path"]
-                    if file_type in ["jpg", "jpeg", "png"]:
-                        # Display thumbnail in a container
-                        with st.container():
-                            # Thumbnail with click to view button
-                            col_thumb1, col_thumb2 = st.columns([3, 1])
-                            with col_thumb1:
-                                st.image(
-                                    str(resolved_path),
-                                    width=200,  # Fixed thumbnail size
-                                    caption=invoice_detail['file_name'],
-                                )
-                            with col_thumb2:
-                                st.markdown("<br>", unsafe_allow_html=True)  # Spacing
-                                if st.button("🔍 Full Size", key=f"view_full_{invoice_detail.get('id', 'default')}", width='stretch'):
-                                    st.session_state[image_modal_key] = True
-                                    st.rerun()
-                            
-                            if resolved["location"] == "encrypted":
-                                st.caption(f"📍 File location: Encrypted storage")
-                    elif file_type == "pdf":
-                        st.info("📂 PDF Preview not available in this view. Please refer to local file.")
-                        st.caption(f"Path: `{resolved_path}`")
-                        if resolved["location"] == "encrypted":
-                            st.caption(f"📍 File location: Encrypted storage")
-                    else:
-                        st.info(f"📄 {file_type.upper()} File")
-                        st.caption(f"Path: `{resolved_path}`")
-                        if resolved["location"] == "encrypted":
-                            st.caption(f"📍 File location: Encrypted storage")
-                else:
-                    st.warning("⚠️ **Source file not found on disk**")
-                    st.caption(f"Expected at: `{storage_path}`")
-                    if resolved.get("error"):
-                        st.caption(f"💡 {resolved['error']}")
-                    if file_hash:
-                        st.caption(f"💡 Also checked encrypted location with hash: `{file_hash[:8]}...`")
-        
-        # Full-size image modal/popup (outside columns for full width)
-        if storage_path and file_type in ["jpg", "jpeg", "png"]:
-            resolved = resolve_file_path(storage_path, file_hash=file_hash, data_dir="data")
-            if resolved["exists"] and resolved["resolved_path"] and st.session_state[image_modal_key]:
-                st.markdown("---")
-                with st.container(border=True):
-                    # Modal header with close button
-                    col_modal1, col_modal2 = st.columns([10, 1])
-                    with col_modal1:
-                        st.markdown(f"### 🔍 Full Size Image: {invoice_detail['file_name']}")
-                    with col_modal2:
-                        if st.button("✕ Close", key=f"close_modal_{invoice_detail.get('id', 'default')}", width='stretch'):
-                            st.session_state[image_modal_key] = False
-                            st.rerun()
-                    
-                    # Full-size image
-                    st.image(
-                        str(resolved["resolved_path"]),
-                        caption=invoice_detail['file_name'],
-                        width='stretch',
-                    )
-                st.markdown("---")
+            render_file_preview(invoice_detail, col_width=400)
 
-        # Display extracted data
+        # Display extracted data with confidence scores
         if invoice_detail.get("extracted_data"):
             st.divider()
-            st.subheader("📊 Extracted Data")
             extracted = invoice_detail["extracted_data"]
+            render_extracted_data_with_confidence(extracted)
             
-            # Basic Information
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                vendor = extracted.get("vendor_name")
-                st.metric("Vendor", vendor or "—")
-            with col2:
-                inv_num = extracted.get("invoice_number")
-                st.metric("Invoice Number", inv_num or "—")
-            with col3:
-                inv_date = extracted.get("invoice_date")
-                date_str = str(inv_date) if inv_date else "—"
-                st.metric("Invoice Date", date_str)
-            
-            # Financial Information
-            st.markdown("#### 💰 Financial Details")
-            col1, col2, col3, col4, col5 = st.columns(5)
-            
-            currency = extracted.get("currency", "USD")
+            # Additional fields
+            st.markdown("#### 📋 Additional Information")
+            col1, col2 = st.columns(2)
             
             with col1:
-                subtotal = extracted.get("subtotal")
-                if subtotal is not None:
-                    try:
-                        subtotal_val = float(subtotal)
-                        st.metric("Subtotal", f"{currency} {subtotal_val:,.2f}")
-                    except (ValueError, TypeError):
-                        st.metric("Subtotal", f"{currency} {subtotal}")
-                else:
-                    st.metric("Subtotal", "—")
-            
-            with col2:
                 tax_rate = extracted.get("tax_rate")
                 if tax_rate is not None:
                     st.metric("Tax Rate", f"{tax_rate * 100:.2f}%")
                 else:
                     st.metric("Tax Rate", "—")
             
-            with col3:
-                tax = extracted.get("tax_amount")
-                if tax is not None:
-                    try:
-                        tax_val = float(tax)
-                        st.metric("Tax Amount", f"{currency} {tax_val:,.2f}")
-                    except (ValueError, TypeError):
-                        st.metric("Tax Amount", f"{currency} {tax}")
+            with col2:
+                due_date = extracted.get("due_date")
+                if due_date:
+                    st.metric("Due Date", str(due_date))
                 else:
-                    st.metric("Tax Amount", "—")
-            
-            with col4:
-                total = extracted.get("total_amount")
-                if total is not None:
-                    try:
-                        total_val = float(total)
-                        st.metric("Total Amount", f"{currency} {total_val:,.2f}", delta=None)
-                    except (ValueError, TypeError):
-                        st.metric("Total Amount", f"{currency} {total}", delta=None)
-                else:
-                    st.metric("Total Amount", "—")
-            
-            with col5:
-                confidence = extracted.get("extraction_confidence")
-                if confidence is not None:
-                    conf_pct = float(confidence) * 100
-                    st.metric("Confidence", f"{conf_pct:.1f}%", help="AI extraction confidence")
-                else:
-                    st.metric("Confidence", "—")
-            
-            # Due Date
-            due_date = extracted.get("due_date")
-            if due_date:
-                st.caption(f"📅 **Due Date:** {due_date}")
+                    st.metric("Due Date", "—")
             
             # Line Items
             line_items = extracted.get("line_items")

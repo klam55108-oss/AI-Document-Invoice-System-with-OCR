@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_session
 from core.logging import get_logger
 from core.models import ExtractedData, Invoice, ProcessingStatus, ValidationResult
+from core.queue import get_queries
 from ingestion.orchestrator import process_invoice_file
 from interface.api.schemas import (
     BulkActionItem,
@@ -292,7 +293,34 @@ async def process_invoice(
     logger.info("Processing invoice file requested", file_path=str(file_path), file_size=file_size)
 
     try:
-        # Process invoice
+        # Determine if we should process in background
+        if request.background:
+            # Enqueue job
+            queries = await get_queries()
+            import json
+            payload = {
+                "file_path": str(file_path),
+                "data_dir": str(data_dir),
+                "force_reprocess": request.force_reprocess,
+                "category": request.category,
+                "group": request.group,
+                "job_id": request.job_id,
+            }
+            # Enqueue returns job_id
+            job_id = await queries.enqueue("process_invoice", json.dumps(payload).encode("utf-8"))
+            
+            logger.info("Invoice processing enqueued", file_path=str(file_path), job_id=str(job_id))
+            
+            return ProcessInvoiceResponse(
+                status="success",
+                data={
+                    "invoice_id": "queued",  # ID not known until worker processes it or we pre-create it
+                    "job_id": str(job_id),
+                    "status": ProcessingStatus.QUEUED.value,
+                },
+            )
+
+        # Process invoice synchronously
         invoice = await process_invoice_file(
             file_path=file_path,
             data_dir=data_dir,

@@ -112,6 +112,13 @@ def get_engine():
     return _engine
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Get the session factory for manual session management."""
+    if _async_session_factory is None:
+        raise RuntimeError("Database not initialized. Call init_db() first.")
+    return _async_session_factory
+
+
 async def check_schema_health() -> dict[str, Any]:
     """Check database schema health by verifying key tables and columns exist.
     

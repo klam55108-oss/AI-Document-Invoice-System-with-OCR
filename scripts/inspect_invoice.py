@@ -43,7 +43,7 @@ async def inspect_invoice(invoice_id_query: str):
                     invoice = result.scalar_one_or_none()
                 except ValueError:
                     # Try searching by filename
-                    stmt = select(Invoice).where(Invoice.file_name.ilike(f"%{invoice_id_query}%")).limit(1)
+                    stmt = select(Invoice).where(Invoice.file_name.ilike(f"%{invoice_id_query}%")).order_by(Invoice.created_at.desc()).limit(1)
                     result = await session.execute(stmt)
                     invoice = result.scalar_one_or_none()
 
@@ -56,7 +56,8 @@ async def inspect_invoice(invoice_id_query: str):
             print(f"File:     {invoice.file_name}")
             print(f"Path:     {invoice.storage_path}")
             print(f"Type:     {invoice.file_type}")
-            print(f"Status:   {invoice.processing_status.value}")
+            status_value = invoice.processing_status.value if hasattr(invoice.processing_status, "value") else invoice.processing_status
+            print(f"Status:   {status_value}")
             print(f"Created:  {invoice.created_at}")
             
             if invoice.processing_status == ProcessingStatus.FAILED:
@@ -98,9 +99,10 @@ async def inspect_invoice(invoice_id_query: str):
             if validations:
                 print(f"\n{'='*20} VALIDATION RESULTS {'='*20}")
                 for val in validations:
-                    status_icon = "✅" if val.status.value == "passed" else "❌"
-                    print(f"{status_icon} {val.rule_name:<30} | {val.status.value}")
-                    if val.status.value == "failed":
+                    val_status = val.status.value if hasattr(val.status, "value") else val.status
+                    status_icon = "✅" if val_status == "passed" else "❌"
+                    print(f"{status_icon} {val.rule_name:<30} | {val_status}")
+                    if val_status == "failed":
                         print(f"   Error: {val.error_message}")
 
     except Exception as e:

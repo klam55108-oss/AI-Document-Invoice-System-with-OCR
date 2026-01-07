@@ -33,6 +33,15 @@ class ExtractedDataSchema(BaseModel):
     extraction_confidence: Decimal | None = Field(
         None, ge=0, le=1, description="Extraction confidence (0-1)"
     )
+    
+    # Per-field confidence scores (added for UI quality improvements)
+    vendor_name_confidence: Decimal | None = Field(None, ge=0, le=1, description="Vendor name confidence (0-1)")
+    invoice_number_confidence: Decimal | None = Field(None, ge=0, le=1, description="Invoice number confidence (0-1)")
+    invoice_date_confidence: Decimal | None = Field(None, ge=0, le=1, description="Invoice date confidence (0-1)")
+    total_amount_confidence: Decimal | None = Field(None, ge=0, le=1, description="Total amount confidence (0-1)")
+    subtotal_confidence: Decimal | None = Field(None, ge=0, le=1, description="Subtotal confidence (0-1)")
+    tax_amount_confidence: Decimal | None = Field(None, ge=0, le=1, description="Tax amount confidence (0-1)")
+    currency_confidence: Decimal | None = Field(None, ge=0, le=1, description="Currency confidence (0-1)")
 
     @field_validator("currency")
     @classmethod
@@ -73,6 +82,21 @@ class ExtractedDataSchema(BaseModel):
             if self.due_date < self.invoice_date:
                 # Same logic: don't raise, just let it be handled by rules framework
                 pass
+        return self
+    
+    @model_validator(mode="after")
+    def calculate_overall_confidence(self) -> "ExtractedDataSchema":
+        """Calculate overall extraction confidence from per-field scores."""
+        if self.extraction_confidence is None:
+            # Use critical fields for overall confidence calculation
+            confidences = [
+                self.vendor_name_confidence,
+                self.invoice_number_confidence,
+                self.total_amount_confidence,
+            ]
+            non_null_confidences = [c for c in confidences if c is not None]
+            if non_null_confidences:
+                self.extraction_confidence = sum(non_null_confidences) / Decimal(len(non_null_confidences))
         return self
 
     class Config:

@@ -32,6 +32,7 @@ class ProcessInvoiceRequest(BaseModel):
     group: str | None = Field(None, description="Logical group/source (e.g. grok, jimeng)")
     job_id: str | None = Field(None, description="Batch/Job identifier (UUID)")
     force_reprocess: bool = Field(False, description="Force reprocessing even if file hash exists")
+    background: bool = Field(False, description="Process in background via job queue")
 
 
 # Response envelope schemas

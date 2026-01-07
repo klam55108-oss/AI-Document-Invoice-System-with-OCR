@@ -16,6 +16,7 @@ async def process_invoice(
     category: Optional[str] = None,
     group: Optional[str] = None,
     job_id: Optional[str] = None,
+    background: bool = False,
 ) -> dict:
     """Process a single invoice file."""
     url = f"{base_url}/api/v1/invoices/process"
@@ -25,6 +26,7 @@ async def process_invoice(
         "category": category,
         "group": group,
         "job_id": job_id,
+        "background": background,
     }
     
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -49,11 +51,15 @@ async def process_invoices(
     data_root: Path = Path("data"),
     category: Optional[str] = None,
     group: Optional[str] = None,
+    background: bool = False,
 ):
     """Process invoice images using flexible search criteria."""
     
-    # Supported image extensions
-    IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".pdf", ".tiff"}
+    # Supported extensions (images, PDF, spreadsheet)
+    SUPPORTED_EXTENSIONS = {
+        ".jpg", ".jpeg", ".png", ".webp", ".avif", ".pdf", ".tiff",
+        ".csv", ".xlsx", ".xls"
+    }
     
     # Resolve search directory
     if not search_dir.is_absolute():
@@ -69,17 +75,17 @@ async def process_invoices(
     else:
         files = list(search_dir.glob(pattern))
         
-    # Filter for image/pdf files
+    # Filter for supported files
     invoice_files = sorted([
         f for f in files 
-        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
+        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
     ])
     
     if not invoice_files:
         print(f"❌ No matching invoice files found in {search_dir}")
         return
     
-    print(f"📄 Found {len(invoice_files)} invoice files to process")
+    print(f"📄 Found {len(invoice_files)} files to process")
     print(f"🌐 API endpoint: {base_url}")
     print(f"🔄 Force reprocess: {force_reprocess}")
     
@@ -88,60 +94,73 @@ async def process_invoices(
     print(f"🆔 Job ID: {job_id}")
     print("-" * 60)
     
-    results = []
-    for i, file_path in enumerate(invoice_files, 1):
-        # The API expects path relative to 'data/' directory
-        try:
-            # Attempt to get path relative to data root if within it
-            if file_path.is_relative_to(data_root.absolute()) or file_path.is_relative_to(data_root):
-                # Handle cases where data_root is relative or absolute
-                try:
-                    relative_path = str(file_path.relative_to(data_root.absolute()))
-                except ValueError:
-                    relative_path = str(file_path.relative_to(data_root))
-            else:
-                # Fallback to filename if outside data root (API might reject this depending on implementation)
-                print(f"⚠️ Warning: {file_path.name} is outside {data_root}. Sending basename.")
+    # Use a semaphore to limit concurrency
+    semaphore = asyncio.Semaphore(5)
+    
+    async def wrapped_process_invoice(i, file_path):
+        async with semaphore:
+            # The API expects path relative to 'data/' directory
+            try:
+                # Attempt to get path relative to data root if within it
+                if file_path.is_relative_to(data_root.absolute()) or file_path.is_relative_to(data_root):
+                    # Handle cases where data_root is relative or absolute
+                    try:
+                        relative_path = str(file_path.relative_to(data_root.absolute()))
+                    except ValueError:
+                        relative_path = str(file_path.relative_to(data_root))
+                else:
+                    relative_path = file_path.name
+            except ValueError:
                 relative_path = file_path.name
-        except ValueError:
-            relative_path = file_path.name
 
-        print(f"[{i}/{len(invoice_files)}] Processing {relative_path}...", end=" ", flush=True)
-        
-        # If group is not provided, use the parent folder name as group
-        file_group = group
-        if not file_group and file_path.parent != search_dir:
-            file_group = file_path.parent.name
+            # If group is not provided, use the parent folder name as group
+            file_group = group
+            if not file_group and file_path.parent != search_dir:
+                file_group = file_path.parent.name
+                
+            print(f"[{i}/{len(invoice_files)}] Processing {relative_path}...")
             
-        result = await process_invoice(
-            relative_path=relative_path, 
-            base_url=base_url, 
-            force_reprocess=force_reprocess,
-            category=category,
-            group=file_group,
-            job_id=job_id
-        )
-        result["file"] = relative_path
-        results.append(result)
-        
-        if result.get("status") == "success":
-            invoice_id = result.get("data", {}).get("invoice_id", "N/A")
-            status = result.get("data", {}).get("status", "N/A")
-            print(f"✅ Success (ID: {invoice_id[:8] if invoice_id != 'N/A' else 'N/A'}..., Status: {status})")
-        elif result.get("status") == "error":
-            error_detail = result.get("error", "Unknown error")
-            # Try to extract more details from error response
-            if isinstance(error_detail, dict):
-                error_msg = error_detail.get("detail", error_detail.get("message", str(error_detail)))
+            result = await process_invoice(
+                relative_path=relative_path, 
+                base_url=base_url, 
+                force_reprocess=force_reprocess,
+                category=category,
+                group=file_group,
+                job_id=job_id,
+                background=background,
+            )
+            result["file"] = relative_path
+            
+            if result.get("status") == "success":
+                invoice_id = result.get("data", {}).get("invoice_id", "N/A")
+                status = result.get("data", {}).get("status", "N/A")
+                print(f"✅ Success: {relative_path} (ID: {invoice_id[:8]}..., Status: {status})")
             else:
-                error_msg = str(error_detail)
-            print(f"❌ Failed: {error_msg}")
-        else:
-            error_msg = result.get("error", "Unknown error")
-            print(f"❌ Failed: {error_msg}")
-        
-        # Small delay to avoid overwhelming the API
-        await asyncio.sleep(0.5)
+                error_detail = result.get("error", "Unknown error")
+                if isinstance(error_detail, dict):
+                    error_msg = error_detail.get("detail", error_detail.get("message", str(error_detail)))
+                else:
+                    error_msg = str(error_detail)
+                print(f"❌ Failed: {relative_path} - {error_msg}")
+            
+            return result
+
+    # Run in parallel
+    tasks = [wrapped_process_invoice(i, f) for i, f in enumerate(invoice_files, 1)]
+    results = await asyncio.gather(*tasks)
+    
+    print("-" * 60)
+    print(f"\n📊 Summary:")
+    successful = sum(1 for r in results if r.get("status") == "success")
+    failed = len(results) - successful
+    print(f"   ✅ Successful: {successful}")
+    print(f"   ❌ Failed: {failed}")
+    
+    if failed > 0:
+        print(f"\n❌ Failed files:")
+        for r in results:
+            if r.get("status") != "success":
+                print(f"   - {r.get('file', 'unknown')}")
     
     print("-" * 60)
     print(f"\n📊 Summary:")
@@ -207,6 +226,11 @@ if __name__ == "__main__":
         type=str,
         help="Logical group/source (e.g. grok, jimeng). If not provided, folder name will be used.",
     )
+    parser.add_argument(
+        "--background", "-b",
+        action="store_true",
+        help="Process in background via job queue",
+    )
     
     args = parser.parse_args()
     
@@ -219,7 +243,8 @@ if __name__ == "__main__":
             force_reprocess=args.force,
             data_root=args.data_root,
             category=args.category,
-            group=args.group
+            group=args.group,
+            background=args.background
         ))
     except KeyboardInterrupt:
         print("\n\n⚠️ Processing interrupted by user")
