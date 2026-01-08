@@ -8,7 +8,7 @@ from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.logging import get_logger
-from interface.dashboard.quality_queries.quality_metrics import (
+from interface.dashboard.queries import (
     get_quality_summary,
     get_quality_by_format,
     get_low_confidence_invoices,
@@ -17,11 +17,57 @@ from interface.dashboard.quality_queries.quality_metrics import (
 logger = get_logger(__name__)
 
 
-def render_quality_dashboard(session: AsyncSession):
-    """Render the quality metrics dashboard.
+async def fetch_quality_data(session: AsyncSession):
+    """Fetch all data needed for the quality dashboard.
     
     Args:
         session: Database session
+        
+    Returns:
+        Tuple of (summary, by_format, low_confidence)
+    """
+    summary = await get_quality_summary(session)
+    by_format = await get_quality_by_format(session)
+    low_confidence = await get_low_confidence_invoices(session, confidence_threshold=0.7)
+    return summary, by_format, low_confidence
+
+
+def render_quality_dashboard_ui(summary: Dict[str, Any], by_format: list, low_confidence: list):
+    """Render the quality metrics dashboard UI with provided data.
+    
+    Args:
+        summary: Quality summary data
+        by_format: Quality by format data
+        low_confidence: Low confidence invoices
+    """
+    # Render summary cards
+    _render_summary_cards(summary, len(low_confidence))
+    
+    # Render charts
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        _render_format_quality_chart(by_format)
+    
+    with col2:
+        _render_confidence_distribution_chart(by_format)
+    
+    # Render field completeness metrics
+    st.subheader("📝 Field Extraction Completeness")
+    _render_field_completion_metrics(summary)
+    
+    # Render low confidence invoices table
+    if low_confidence:
+        st.subheader(f"⚠️ Low Confidence Invoices ({len(low_confidence)})")
+        st.markdown(f"Invoices with at least one critical field confidence below 0.7")
+        _render_low_confidence_table(low_confidence)
+
+
+def render_quality_dashboard(session: AsyncSession = None):
+    """Render the quality metrics dashboard (Legacy compatibility).
+    
+    Args:
+        session: Database session (optional)
     """
     st.header("📊 Extraction Quality Dashboard")
     st.markdown("Monitor extraction accuracy, confidence scores, and data quality metrics.")
@@ -30,32 +76,23 @@ def render_quality_dashboard(session: AsyncSession):
     try:
         import asyncio
         
-        summary = asyncio.run(get_quality_summary(session))
-        by_format = asyncio.run(get_quality_by_format(session))
-        low_confidence = asyncio.run(get_low_confidence_invoices(session, confidence_threshold=0.7))
-        
-        # Render summary cards
-        _render_summary_cards(summary, len(low_confidence))
-        
-        # Render charts
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            _render_format_quality_chart(by_format)
-        
-        with col2:
-            _render_confidence_distribution_chart(by_format)
-        
-        # Render field completion metrics
-        st.subheader("📝 Field Extraction Completeness")
-        _render_field_completion_metrics(summary)
-        
-        # Render low confidence invoices table
-        if low_confidence:
-            st.subheader(f"⚠️ Low Confidence Invoices ({len(low_confidence)})")
-            st.markdown(f"Invoices with at least one critical field confidence below 0.7")
-            _render_low_confidence_table(low_confidence)
-        
+        if session:
+            # If session is provided, we try to run in a loop if ones isn't running
+            # However, if app.py provides the session, it's usually already in a loop
+            # which causes the failure. The new preferred way is render_quality_dashboard_ui.
+            try:
+                loop = asyncio.get_running_loop()
+                # If we have a loop, we can't use asyncio.run
+                # This legacy function is problematic in that case.
+                st.warning("⚠️ Accessing quality dashboard via legacy method. Some components might not load.")
+                return
+            except RuntimeError:
+                summary, by_format, low_confidence = asyncio.run(fetch_quality_data(session))
+                render_quality_dashboard_ui(summary, by_format, low_confidence)
+        else:
+            # This is also problematic if we don't have a session factory here.
+            st.error("No database session provided for quality dashboard.")
+            
     except Exception as e:
         logger.error("Failed to render quality dashboard", error=str(e))
         st.error(f"Failed to load quality metrics: {str(e)}")
@@ -181,7 +218,7 @@ def _render_format_quality_chart(by_format: list):
         )
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     # Show data table
     with st.expander("📊 View detailed data"):
@@ -203,7 +240,7 @@ def _render_format_quality_chart(by_format: list):
             "Avg Invoice# Conf",
             "Avg Total Conf"
         ]
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(display_df, width="stretch")
 
 
 def _render_confidence_distribution_chart(by_format: list):
@@ -245,7 +282,7 @@ def _render_confidence_distribution_chart(by_format: list):
     
     fig.update_layout(height=400)
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     # Show average confidence by format
     with st.expander("📈 Average confidence by format"):
@@ -265,7 +302,7 @@ def _render_confidence_distribution_chart(by_format: list):
             yaxis_range=[0, 1],
             showlegend=False
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, width="stretch")
 
 
 def _render_field_completion_metrics(summary: Dict[str, Any]):
@@ -334,14 +371,14 @@ def _render_field_completion_metrics(summary: Dict[str, Any]):
         )
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
     # Show completion table
     with st.expander("📋 View completion details"):
         display_df = df.copy()
         display_df["Total"] = total
         display_df = display_df[["Field", "Extracted", "Missing", "Total", "Completion %"]]
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width="stretch", hide_index=True)
 
 
 def _render_low_confidence_table(low_confidence: list):
@@ -373,7 +410,7 @@ def _render_low_confidence_table(low_confidence: list):
     # Display table
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Vendor Conf.": st.column_config.TextColumn("Vendor Conf."),

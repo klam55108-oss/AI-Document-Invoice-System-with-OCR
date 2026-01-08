@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import date
 
 from core.database import get_session
-from interface.dashboard.quality_queries.quality_metrics import (
+from interface.dashboard.queries import (
     get_quality_summary,
     get_quality_by_format,
     get_low_confidence_invoices,

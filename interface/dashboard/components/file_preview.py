@@ -112,7 +112,7 @@ def _render_image_preview(
             st.image(
                 str(file_path),
                 caption=file_name,
-                use_container_width=True,
+                width="stretch",
             )
         st.markdown("---")
 
@@ -194,7 +194,7 @@ def _render_spreadsheet_preview(
             display_rows = min(50, len(df))
             st.dataframe(
                 df.head(display_rows),
-                use_container_width=True,
+                width="stretch",
                 height=min(400, 35 * display_rows + 38)  # Dynamic height
             )
             
@@ -209,7 +209,7 @@ def _render_spreadsheet_preview(
                 "Non-Null Count": df.count(),
                 "Null Count": df.isnull().sum()
             })
-            st.dataframe(col_info, use_container_width=True, hide_index=True)
+            st.dataframe(col_info, width="stretch", hide_index=True)
         
         # Download button for processed CSV
         csv_data = df.to_csv(index=False)

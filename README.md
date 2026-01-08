@@ -38,15 +38,15 @@ flowchart TD
     B -- PDF/Image --> C2[PaddleOCR / Docling]
     C1 --> D[Structured Extraction Layer]
     C2 --> D
-    D --> E[LLM Extraction (DeepSeek/GPT)]
-    E --> F{Validation Agent<br>Math/Logic Check}
-    F -- Valid --> G[STP Success:<br>Store in Postgres]
-    F -- Invalid --> H[Self-Correction Layer<br>Prompt Refinement]
+    D --> E[LLM Extraction DeepSeek/GPT]
+    E --> F{Validation Agent Math/Logic Check}
+    F -- Valid --> G[STP Success: Store in Postgres]
+    F -- Invalid --> H[Self-Correction Layer Prompt Refinement]
     H --> E
-    F -- Still Invalid --> I[Human-in-the-Loop<br>Review &#91;Streamlit&#93;]
+    F -- Still Invalid --> I[Human-in-the-Loop Review Streamlit]
     G --> J[ERP/BI Integration]
     I --> J
-    I -- User Correction --> K[Feedback Loop<br>Extraction Improves]
+    I -- User Correction --> K[Feedback Loop Extraction Improves]
     K --> E
 ```
 

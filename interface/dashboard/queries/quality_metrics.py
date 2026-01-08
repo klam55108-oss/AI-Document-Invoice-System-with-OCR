@@ -37,7 +37,11 @@ async def get_quality_summary(session: AsyncSession) -> Dict[str, Any]:
             func.count(ExtractedData.invoice_id).label("total"),
             func.count(ExtractedData.vendor_name).label("vendor_present"),
             func.count(ExtractedData.invoice_number).label("invoice_num_present"),
+            func.count(ExtractedData.invoice_date).label("invoice_date_present"),
             func.count(ExtractedData.total_amount).label("total_amount_present"),
+            func.count(ExtractedData.subtotal).label("subtotal_present"),
+            func.count(ExtractedData.tax_amount).label("tax_amount_present"),
+            func.count(ExtractedData.currency).label("currency_present"),
         )
     )
     completeness = completeness_result.one()
@@ -57,7 +61,11 @@ async def get_quality_summary(session: AsyncSession) -> Dict[str, Any]:
         "critical_fields_complete": {
             "vendor_name": completeness.vendor_present or 0,
             "invoice_number": completeness.invoice_num_present or 0,
+            "invoice_date": completeness.invoice_date_present or 0,
             "total_amount": completeness.total_amount_present or 0,
+            "subtotal": completeness.subtotal_present or 0,
+            "tax_amount": completeness.tax_amount_present or 0,
+            "currency": completeness.currency_present or 0,
         },
         "avg_confidence": {
             "vendor_name": float(confidences.avg_vendor_conf or 0),

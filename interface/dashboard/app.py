@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+import asyncio
 import pandas as pd
 import streamlit as st
 from sqlalchemy import select
@@ -192,13 +193,20 @@ def main():
         render_chatbot_tab()
     
     with tab5:
-        # Get session for quality dashboard
-        async def get_session_for_quality():
+        from interface.dashboard.components.quality_dashboard import fetch_quality_data, render_quality_dashboard_ui
+        st.header("📊 Extraction Quality Dashboard")
+        st.markdown("Monitor extraction accuracy, confidence scores, and data quality metrics.")
+
+        async def get_quality_data():
             async with _session_factory() as session:
-                render_quality_dashboard(session)
+                return await fetch_quality_data(session)
         
-        import asyncio
-        asyncio.run(get_session_for_quality())
+        try:
+            summary, by_format, low_confidence = asyncio.run(get_quality_data())
+            render_quality_dashboard_ui(summary, by_format, low_confidence)
+        except Exception as e:
+            logger.error("Failed to render quality dashboard", error=str(e))
+            st.error(f"Failed to load quality metrics: {str(e)}")
 
 
 def display_invoice_list(
@@ -226,8 +234,6 @@ def display_invoice_list(
     status_enum = status_map.get(status_filter)
 
     # Fetch invoices using proper async handling for Streamlit
-    import asyncio
-
     try:
         # Use asyncio.run() which properly manages event loop lifecycle
         # This ensures clean state for each request
@@ -867,6 +873,7 @@ def display_invoice_detail(preselected_id: str = None):
             if line_items:
                 st.markdown("#### 📋 Line Items")
                 if isinstance(line_items, list) and len(line_items) > 0:
+                    currency = extracted.get("currency", "") or ""
                     line_items_data = []
                     for item in line_items:
                         if isinstance(item, dict):
