@@ -23,6 +23,20 @@ python3 scripts/process_invoices.py --force
 
 # Process in background via job queue
 python3 scripts/process_invoices.py --background
+
+# Specify category and group
+python3 scripts/process_invoices.py --category "Invoice" --group "Vendor_X"
+
+# Set concurrency level (default: 2)
+python3 scripts/process_invoices.py --concurrency 4
+```
+
+### check_job.py
+Checks the status of all invoices associated with a specific Job ID.
+
+**Usage:**
+```bash
+python3 scripts/check_job.py <job_id>
 ```
 
 ---
@@ -42,6 +56,14 @@ python3 scripts/inspect_invoice.py 550e8400-e29b-41d4-a716-446655440000
 
 # Inspect by partial filename search
 python3 scripts/inspect_invoice.py "grok/1.jpg"
+```
+
+### check_failed_invoices.py
+Prints a list of the most recent failed invoices and their error messages from the database.
+
+**Usage:**
+```bash
+python3 scripts/check_failed_invoices.py
 ```
 
 ### debug_chatbot.py
@@ -139,6 +161,9 @@ Sets up the `pgqueuer` schema for background job processing.
 ```bash
 ./scripts/setup_queue.sh
 ```
+
+### start_safe_api.sh
+Starts the API server in "Safe Mode" (single worker, no reload) optimized for stable batch processing in low-memory environments.
 
 ### restart_api.sh
 Quick helper to find and restart the FastAPI server.
