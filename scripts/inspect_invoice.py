@@ -18,6 +18,31 @@ from core.models import Invoice, ExtractedData, ProcessingStatus, ValidationResu
 
 load_dotenv()
 
+async def list_failed_invoices(limit: int = 20):
+    """List recent failed invoices."""
+    database_url = os.getenv("DATABASE_URL")
+    engine = create_async_engine(database_url, echo=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    async with session_factory() as session:
+        stmt = select(Invoice).where(Invoice.processing_status == ProcessingStatus.FAILED).order_by(Invoice.created_at.desc()).limit(limit)
+        result = await session.execute(stmt)
+        invoices = result.scalars().all()
+        
+        if not invoices:
+            print("✅ No failed invoices found.")
+            return
+
+        print(f"\n❌ Recent Failed Invoices ({len(invoices)}):")
+        print("-" * 80)
+        print(f"{'ID':<38} | {'Filename':<30} | {'Error'}")
+        print("-" * 80)
+        for inv in invoices:
+            error = (inv.error_message or "Unknown error")[:50]
+            print(f"{str(inv.id):<38} | {inv.file_name[:30]:<30} | {error}")
+    
+    await engine.dispose()
+
 async def inspect_invoice(invoice_id_query: str):
     """Inspect invoice by ID or latest."""
     database_url = os.getenv("DATABASE_URL")
@@ -42,8 +67,11 @@ async def inspect_invoice(invoice_id_query: str):
                     result = await session.execute(stmt)
                     invoice = result.scalar_one_or_none()
                 except ValueError:
-                    # Try searching by filename
-                    stmt = select(Invoice).where(Invoice.file_name.ilike(f"%{invoice_id_query}%")).order_by(Invoice.created_at.desc()).limit(1)
+                    # Try searching by filename or storage path
+                    stmt = select(Invoice).where(
+                        (Invoice.file_name.ilike(f"%{invoice_id_query}%")) | 
+                        (Invoice.storage_path.ilike(f"%{invoice_id_query}%"))
+                    ).order_by(Invoice.created_at.desc()).limit(1)
                     result = await session.execute(stmt)
                     invoice = result.scalar_one_or_none()
 
@@ -75,22 +103,17 @@ async def inspect_invoice(invoice_id_query: str):
                 print(f"Inv #:    {data.invoice_number}")
                 print(f"Date:     {data.invoice_date}")
                 print(f"Total:    {data.total_amount} {data.currency or ''}")
-                print(f"Subtotal: {data.subtotal}")
-                print(f"Tax:      {data.tax_amount} (Rate: {data.tax_rate})")
                 print(f"Confid:   {data.extraction_confidence:.2%}")
                 
-                print(f"\nLine Items ({len(data.line_items) if data.line_items else 0}):")
                 if data.line_items:
-                    for i, item in enumerate(data.line_items, 1):
+                    print(f"\nLine Items ({len(data.line_items)}):")
+                    for i, item in enumerate(data.line_items[:10], 1): # Show first 10
                         amount = item.get('amount', 0)
                         desc = item.get('description', 'N/A')
                         print(f"  {i}. {desc[:50]:<50} | {amount:>10}")
-                
-                print(f"\nRAW TEXT PREVIEW (first 500 chars):")
-                print("-" * 40)
-                print(data.raw_text[:500] if data.raw_text else "No raw text")
-                print("-" * 40)
-
+                    if len(data.line_items) > 10:
+                        print(f"  ... and {len(data.line_items) - 10} more items.")
+            
             # Fetch Validation Results
             stmt = select(ValidationResult).where(ValidationResult.invoice_id == invoice.id)
             result = await session.execute(stmt)
@@ -107,11 +130,19 @@ async def inspect_invoice(invoice_id_query: str):
 
     except Exception as e:
         print(f"❌ Error inspecting invoice: {str(e)}")
-        import traceback
-        traceback.print_exc()
     finally:
         await engine.dispose()
 
 if __name__ == "__main__":
-    query = sys.argv[1] if len(sys.argv) > 1 else "latest"
-    asyncio.run(inspect_invoice(query))
+    import argparse
+    parser = argparse.ArgumentParser(description="Inspect invoice details or list failures")
+    parser.add_argument("query", nargs="?", default="latest", help="Invoice ID, filename, or 'latest'")
+    parser.add_argument("--failed", action="store_true", help="List recent failed invoices")
+    parser.add_argument("--limit", type=int, default=20, help="Limit for --failed list")
+    
+    args = parser.parse_args()
+    
+    if args.failed:
+        asyncio.run(list_failed_invoices(args.limit))
+    else:
+        asyncio.run(inspect_invoice(args.query))

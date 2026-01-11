@@ -9,9 +9,12 @@ from typing import List, Optional
 import httpx
 
 
+import os
+from core.config import settings
+
 async def process_invoice(
     relative_path: str, 
-    base_url: str = "http://localhost:8000",
+    base_url: str = f"http://localhost:{os.getenv('API_PORT', settings.API_PORT)}",
     force_reprocess: bool = False,
     category: Optional[str] = None,
     group: Optional[str] = None,
@@ -50,7 +53,7 @@ async def process_invoices(
     search_dir: Path,
     pattern: str = "*",
     recursive: bool = False,
-    base_url: str = "http://localhost:8000",
+    base_url: str = f"http://localhost:{os.getenv('API_PORT', settings.API_PORT)}",
     force_reprocess: bool = False,
     data_root: Path = Path("data"),
     category: Optional[str] = None,
@@ -180,7 +183,7 @@ async def process_invoices(
             if r.get("status") != "success":
                 print(f"   - {r.get('file', 'unknown')}")
     
-    print(f"\n💡 View results in the dashboard: http://localhost:8501")
+    print(f"\n💡 View results in the dashboard: http://localhost:{os.getenv('UI_PORT', settings.UI_PORT)}")
 
 
 if __name__ == "__main__":
@@ -212,8 +215,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api-url",
         type=str,
-        default="http://127.0.0.1:8000",
-        help="API base URL (default: http://localhost:8000)",
+        default=f"http://127.0.0.1:{os.getenv('API_PORT', settings.API_PORT)}",
+        help=f"API base URL (default: http://localhost:{os.getenv('API_PORT', settings.API_PORT)})",
     )
     parser.add_argument(
         "--data-root",
