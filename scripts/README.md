@@ -2,7 +2,23 @@
 
 This directory contains various utility scripts for setting up the environment, processing invoices, and maintaining the database.
 
-## 🚀 Processing Scripts
+## � Quick Reference
+
+| Use Case | Script | Example command |
+| :--- | :--- | :--- |
+| **Process local files** | `process_invoices.py` | `python3 scripts/process_invoices.py --dir data/` |
+| **Inspect a specific invoice** | `inspect_invoice.py` | `python3 scripts/inspect_invoice.py <ID>` |
+| **List recent failed extractions** | `inspect_invoice.py` | `python3 scripts/inspect_invoice.py --failed` |
+| **Check status of a batch job** | `inspect_invoice.py` | `python3 scripts/inspect_invoice.py --job <ID>` |
+| **Test OCR/PDF on a file** | `debug_ocr.py` | `python3 scripts/debug_ocr.py <file>` |
+| **Query/Chat with your data** | `debug_chatbot.py` | `python3 scripts/debug_chatbot.py "query"` |
+| **Reset or clean up data** | `cleanup_data.py` | `python3 scripts/cleanup_data.py --all` |
+| **Start/Restart API server** | `restart_api.sh` | `./scripts/restart_api.sh` |
+| **Initial environment setup** | `setup.sh` | `./scripts/setup.sh` |
+
+---
+
+## �🚀 Processing Scripts
 
 ### process_invoices.py
 The primary script for batch processing invoices. It walks through a directory and sends files to the AI-eInvoicing engine for extraction and validation.
@@ -14,14 +30,6 @@ python3 scripts/process_invoices.py
 
 # Specify category and group
 python3 scripts/process_invoices.py --category "Invoice" --group "Vendor_X" --dir data/vendor_x
-```
-
-### check_job.py
-Checks the status of all invoices associated with a specific Job ID.
-
-**Usage:**
-```bash
-python3 scripts/check_job.py <job_id>
 ```
 
 ---
@@ -38,6 +46,9 @@ python3 scripts/inspect_invoice.py
 
 # List recent failed invoices
 python3 scripts/inspect_invoice.py --failed
+
+# List all invoices for a specific batch job
+python3 scripts/inspect_invoice.py --job <job_id>
 
 # Inspect by specific UUID or partial filename
 python3 scripts/inspect_invoice.py 550e8400-e29b-41d4-a716-446655440000
@@ -102,9 +113,6 @@ Starts the API server in "Safe Mode" (single worker, no reload) optimized for st
 
 ### restart_api.sh
 Quick helper to find and restart the FastAPI server.
-
-### verify_docling.py
-Test script for Docling PDF processing and LLM extraction.
 
 ---
 

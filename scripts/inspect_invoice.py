@@ -43,6 +43,37 @@ async def list_failed_invoices(limit: int = 20):
     
     await engine.dispose()
 
+async def list_job_invoices(job_id_query: str):
+    """List all invoices associated with a job ID."""
+    database_url = os.getenv("DATABASE_URL")
+    engine = create_async_engine(database_url, echo=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    
+    try:
+        job_id = uuid.UUID(job_id_query)
+    except ValueError:
+        print(f"❌ Invalid Job ID format: {job_id_query}")
+        return
+
+    async with session_factory() as session:
+        stmt = select(Invoice).where(Invoice.job_id == job_id).order_by(Invoice.created_at.asc())
+        result = await session.execute(stmt)
+        invoices = result.scalars().all()
+        
+        if not invoices:
+            print(f"❌ No invoices found for Job ID: {job_id}")
+            return
+
+        print(f"\n📋 Invoices for Job {job_id} ({len(invoices)} total):")
+        print("-" * 100)
+        print(f"{'ID':<38} | {'Filename':<30} | {'Status':<12}")
+        print("-" * 100)
+        for inv in invoices:
+            status = inv.processing_status.value if hasattr(inv.processing_status, "value") else str(inv.processing_status)
+            print(f"{str(inv.id):<38} | {inv.file_name[:30]:<30} | {status:<12}")
+    
+    await engine.dispose()
+
 async def inspect_invoice(invoice_id_query: str):
     """Inspect invoice by ID or latest."""
     database_url = os.getenv("DATABASE_URL")
@@ -138,11 +169,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inspect invoice details or list failures")
     parser.add_argument("query", nargs="?", default="latest", help="Invoice ID, filename, or 'latest'")
     parser.add_argument("--failed", action="store_true", help="List recent failed invoices")
+    parser.add_argument("--job", type=str, help="List all invoices for a specific Job ID")
     parser.add_argument("--limit", type=int, default=20, help="Limit for --failed list")
     
     args = parser.parse_args()
     
-    if args.failed:
+    if args.job:
+        asyncio.run(list_job_invoices(args.job))
+    elif args.failed:
         asyncio.run(list_failed_invoices(args.limit))
     else:
         asyncio.run(inspect_invoice(args.query))
