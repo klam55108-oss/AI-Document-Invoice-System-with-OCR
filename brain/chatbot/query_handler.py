@@ -84,7 +84,7 @@ class QueryHandler:
             )
 
         # Check for detail keywords
-        detail_keywords = ["what", "details", "information", "tell me about"]
+        detail_keywords = ["what", "details", "detail", "information", "tell me about"]
         if any(keyword in query_lower for keyword in detail_keywords):
             return QueryIntent(
                 intent_type=self.GET_DETAILS,
@@ -105,6 +105,12 @@ class QueryHandler:
         query_lower = query.lower()
         import re
 
+        # Extract UUIDs (standard 8-4-4-4-12 format)
+        uuid_pattern = r"\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b"
+        match = re.search(uuid_pattern, query_lower)
+        if match:
+            params["uuid"] = match.group(1)
+
         # Extract vendor name (simple pattern matching)
         # Look for patterns like "from Acme", "vendor Acme", "Acme Corp", "by Acme"
         vendor_patterns = [
@@ -121,11 +127,17 @@ class QueryHandler:
                     break
 
         # Extract invoice number
-        # Look for patterns like "INV-2024-001", "invoice 123"
-        invoice_pattern = r"(?:invoice|inv)[\s#-]*([A-Z0-9-]+)"
+        # Improved regex to avoid matching "ID" or random numbers in strings
+        # Look for patterns like "INV-2024-001", "invoice 123", but NOT "invoice id"
+        invoice_pattern = r"\b(?:invoice|inv)\b(?!\s+id)[\s#-]*([a-zA-Z0-9.-]+)"
         match = re.search(invoice_pattern, query_lower, re.IGNORECASE)
         if match:
-            params["invoice_number"] = match.group(1).upper()
+            invoice_num = match.group(1).strip().upper()
+            # If it looks like a filename, keep it as is, otherwise uppercase it
+            if "." in invoice_num:
+                params["invoice_number"] = match.group(1).strip()
+            else:
+                params["invoice_number"] = invoice_num
 
         # Extract date mentions (simplified)
         # Look for patterns like "in December 2024", "this month", "last month", "2024-12"

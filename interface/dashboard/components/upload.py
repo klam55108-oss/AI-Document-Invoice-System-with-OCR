@@ -27,7 +27,7 @@ ACCEPTED_TYPES = [
 MAX_FILE_SIZE = 50 * 1024 * 1024
 
 
-def render_upload_ui(api_base_url: str = "http://localhost:8000") -> None:
+def render_upload_ui(api_base_url: str = "http://127.0.0.1:8000") -> None:
     """Render the file upload UI component.
 
     Args:

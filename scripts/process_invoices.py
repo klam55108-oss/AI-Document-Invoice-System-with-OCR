@@ -29,7 +29,7 @@ async def process_invoice(
         "background": background,
     }
     
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         try:
             response = await client.post(url, json=payload)
             response.raise_for_status()
@@ -38,8 +38,12 @@ async def process_invoice(
             print(f"❌ Error processing {relative_path}: {e.response.status_code} - {e.response.text}")
             return {"status": "error", "file": relative_path, "error": str(e)}
         except Exception as e:
-            print(f"❌ Unexpected error processing {relative_path}: {str(e)}")
-            return {"status": "error", "file": relative_path, "error": str(e)}
+            # Capture more detail if available
+            error_msg = f"{type(e).__name__}: {str(e)}" if str(e) else type(e).__name__
+            if hasattr(e, "request"):
+                error_msg += f" (Request: {e.request.method} {e.request.url})"
+            print(f"❌ Unexpected error processing {relative_path}: {error_msg}")
+            return {"status": "error", "file": relative_path, "error": error_msg}
 
 
 async def process_invoices(
@@ -52,6 +56,7 @@ async def process_invoices(
     category: Optional[str] = None,
     group: Optional[str] = None,
     background: bool = False,
+    concurrency: int = 2,
 ):
     """Process invoice images using flexible search criteria."""
     
@@ -95,7 +100,7 @@ async def process_invoices(
     print("-" * 60)
     
     # Use a semaphore to limit concurrency
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(concurrency)
     
     async def wrapped_process_invoice(i, file_path):
         async with semaphore:
@@ -207,7 +212,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api-url",
         type=str,
-        default="http://localhost:8000",
+        default="http://127.0.0.1:8000",
         help="API base URL (default: http://localhost:8000)",
     )
     parser.add_argument(
@@ -231,6 +236,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Process in background via job queue",
     )
+    parser.add_argument(
+        "--concurrency", "-n",
+        type=int,
+        default=2,
+        help="Number of concurrent processing tasks (default: 2)",
+    )
     
     args = parser.parse_args()
     
@@ -244,7 +255,8 @@ if __name__ == "__main__":
             data_root=args.data_root,
             category=args.category,
             group=args.group,
-            background=args.background
+            background=args.background,
+            concurrency=args.concurrency,
         ))
     except KeyboardInterrupt:
         print("\n\n⚠️ Processing interrupted by user")

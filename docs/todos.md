@@ -66,3 +66,10 @@ The database query used an inner join that required extracted data, and the WHER
 - Better handling of missing data: uses outer join and handles NULL extracted fields
 - Aggregate query fallback: when asking "how many" or "total", retrieves all invoices if specific search fails
 - Enhanced response generation: includes file names and metadata even when extracted data is missing
+
+
+
+```bash
+./scripts/start_safe_api.sh
+python scripts/process_invoices.py --dir data/jimeng --concurrency 2 --force
+```

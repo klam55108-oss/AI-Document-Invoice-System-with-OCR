@@ -16,10 +16,11 @@ logger = get_logger(__name__)
 # Initialize PaddleOCR (CPU mode by default for compatibility)
 # This will download the models on first use
 _ocr_engine = None
-_ocr_lock = threading.Lock()
+_ocr_lock = asyncio.Lock()
 _ocr_initializing = False
 _memory_threshold_mb = 1024  # Minimum free memory recommended (1GB)
 _critical_memory_threshold_mb = 300  # Critical threshold to avoid OS kill (300MB)
+_ocr_semaphore = asyncio.Semaphore(1)  # Strictly limit to 1 concurrent OCR task
 
 
 def check_system_resources() -> tuple[bool, str]:
@@ -160,7 +161,7 @@ async def get_ocr_engine(lang: str = "ch"):
     
     This function runs PaddleOCR initialization in a thread pool to avoid
     blocking the async event loop. Initialization is thread-safe and only
-    happens once.
+    happens once using an asyncio.Lock.
     
     Args:
         lang: Language code for OCR. Default "ch" (Chinese) supports both Chinese and English.
@@ -178,34 +179,27 @@ async def get_ocr_engine(lang: str = "ch"):
     if _ocr_engine is not None:
         return _ocr_engine
     
-    # Thread-safe initialization
-    with _ocr_lock:
+    # Async lock ensures only one coro initializes the engine
+    async with _ocr_lock:
         # Double-check after acquiring lock
         if _ocr_engine is not None:
             return _ocr_engine
         
-        # Check if another thread is already initializing
-        if _ocr_initializing:
-            # Wait for initialization to complete
-            logger.info("Waiting for PaddleOCR initialization in progress...")
-            while _ocr_initializing and _ocr_engine is None:
-                await asyncio.sleep(0.1)
-            if _ocr_engine is not None:
-                return _ocr_engine
-        
         # Mark as initializing
         _ocr_initializing = True
-    
-    try:
-        # Run initialization in thread pool to avoid blocking event loop
-        loop = asyncio.get_event_loop()
-        _ocr_engine = await loop.run_in_executor(None, _init_ocr_engine_sync, lang)
-        return _ocr_engine
-    except Exception as e:
-        logger.error("Failed to initialize PaddleOCR in thread pool", error=str(e))
-        raise
-    finally:
-        _ocr_initializing = False
+        
+        try:
+            logger.info("Starting PaddleOCR initialization in thread pool...")
+            # Run initialization in thread pool to avoid blocking event loop
+            loop = asyncio.get_event_loop()
+            # Note: _init_ocr_engine_sync is a CPU-bound task
+            _ocr_engine = await loop.run_in_executor(None, _init_ocr_engine_sync, lang)
+            return _ocr_engine
+        except Exception as e:
+            logger.error("Failed to initialize PaddleOCR in thread pool", error=str(e))
+            raise
+        finally:
+            _ocr_initializing = False
 
 
 async def process_image(file_path: Path) -> dict[str, Any]:
@@ -298,11 +292,13 @@ async def process_image(file_path: Path) -> dict[str, Any]:
             ocr_timeout = min(ocr_timeout, 900.0)  # Cap at 15 minutes for very large images
         
         try:
-            logger.info("Starting OCR processing", path=str(file_path), timeout_seconds=ocr_timeout, file_size_mb=round(file_size/(1024*1024), 2))
-            result = await asyncio.wait_for(
-                loop.run_in_executor(None, run_ocr),
-                timeout=ocr_timeout
-            )
+            logger.info("Acquiring OCR semaphore...", path=str(file_path))
+            async with _ocr_semaphore:
+                logger.info("Starting OCR processing", path=str(file_path), timeout_seconds=ocr_timeout, file_size_mb=round(file_size/(1024*1024), 2))
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, run_ocr),
+                    timeout=ocr_timeout
+                )
         except asyncio.TimeoutError:
             error_msg = f"OCR processing timed out after {ocr_timeout} seconds. The image may be too large, complex, or PaddleOCR may be unresponsive. Try a smaller image or check system resources."
             logger.error("OCR processing timeout", path=str(file_path), timeout=ocr_timeout, file_size=file_size, file_size_mb=round(file_size/(1024*1024), 2))

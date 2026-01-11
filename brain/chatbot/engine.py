@@ -28,9 +28,9 @@ class ChatbotEngine:
         # Initialize DeepSeek client
         # Note: Using OpenAI-compatible client for DeepSeek
         try:
-            from openai import OpenAI
+            from openai import AsyncOpenAI
 
-            self.llm_client = OpenAI(
+            self.llm_client = AsyncOpenAI(
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url="https://api.deepseek.com/v1",  # DeepSeek API endpoint
             )
@@ -163,7 +163,28 @@ class ChatbotEngine:
             logger.info("Aggregate query with filters returned results", count=len(invoice_ids))
             return invoice_ids
 
-        # For other queries, try vector search first
+        # 1. Check for UUID in intent parameters (most specific)
+        if intent.parameters and "uuid" in intent.parameters:
+            try:
+                invoice_ids = [UUID(intent.parameters["uuid"])]
+                logger.info("Found UUID in intent parameters", uuid=intent.parameters["uuid"])
+                return invoice_ids
+            except ValueError:
+                pass
+
+        # 2. Check for filename/invoice_number in intent parameters
+        if intent.parameters and "invoice_number" in intent.parameters:
+            invoice_number = intent.parameters["invoice_number"]
+            # If it's a specific filename like "invoice-14.png"
+            if "." in invoice_number:
+                stmt = select(Invoice.id).where(Invoice.file_name.ilike(f"%{invoice_number}%"))
+                result = await self.session.execute(stmt)
+                db_ids = [row[0] for row in result.fetchall()]
+                if db_ids:
+                    logger.info("Found invoices by filename from parameters", invoice_number=invoice_number, count=len(db_ids))
+                    return db_ids[: settings.CHATBOT_MAX_RESULTS]
+
+        # 3. For other queries, try vector search (semantic)
         try:
             invoice_ids = await self.vector_retriever.search_similar(
                 query_text=query,
@@ -173,13 +194,13 @@ class ChatbotEngine:
         except Exception as e:
             logger.warning("Vector search failed, falling back to database query", error=str(e))
 
-        # If vector search returned no results, try database query as fallback
+        # 4. If vector search returned no results, try database query as fallback
         if not invoice_ids:
             invoice_ids = await self._query_invoices_from_db(query, intent)
 
-        # Apply additional filters from intent parameters
+        # 5. Apply additional filters from intent parameters for remaining results
         if intent.parameters and invoice_ids:
-            # Filter by invoice number if specified
+            # Filter by invoice number if specified and NOT already handled by filename search
             if "invoice_number" in intent.parameters:
                 invoice_number = intent.parameters["invoice_number"]
                 filtered_ids = await self._filter_by_invoice_number(invoice_ids, invoice_number)
@@ -195,9 +216,37 @@ class ChatbotEngine:
         try:
             query_lower = query.lower()
 
-            # First, check upload_metadata for subfolder/dataset matches (e.g., "jimeng")
-            if "jimeng" in query_lower or "dataset" in query_lower:
-                # Check for subfolder in upload_metadata using JSONB path extraction
+            # 1. Search for UUIDs directly in query text
+            import re
+            uuid_pattern = r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+            match = re.search(uuid_pattern, query_lower)
+            if match:
+                try:
+                    uuid_val = UUID(match.group(1))
+                    stmt = select(Invoice.id).where(Invoice.id == uuid_val)
+                    result = await self.session.execute(stmt)
+                    ids = [row[0] for row in result.fetchall()]
+                    if ids:
+                        logger.info("Found invoice by UUID from query text", uuid=str(uuid_val))
+                        return ids
+                except ValueError:
+                    pass
+
+            # 2. Extract potential filenames (e.g. "invoice-14.png")
+            file_pattern = r"\b([a-zA-Z0-9._-]+\.(?:png|jpg|jpeg|pdf|webp|csv|xlsx))\b"
+            file_matches = re.findall(file_pattern, query_lower)
+            if file_matches:
+                file_ids = []
+                for fname in file_matches:
+                    stmt = select(Invoice.id).where(Invoice.file_name.ilike(f"%{fname}%"))
+                    res = await self.session.execute(stmt)
+                    file_ids.extend([row[0] for row in res.fetchall()])
+                if file_ids:
+                    logger.info("Found invoices by filename(s) from query text", filenames=file_matches)
+                    return list(dict.fromkeys(file_ids))[:settings.CHATBOT_MAX_RESULTS]
+
+            # 3. Check upload_metadata for subfolder/dataset matches
+            if "jimeng" in query_lower:
                 stmt_metadata = (
                     select(Invoice.id)
                     .where(
@@ -207,12 +256,10 @@ class ChatbotEngine:
                 )
                 result_metadata = await self.session.execute(stmt_metadata)
                 metadata_ids = [row[0] for row in result_metadata.fetchall()]
-
                 if metadata_ids:
-                    logger.info("Found invoices from metadata search", count=len(metadata_ids))
                     return metadata_ids
 
-            # Query invoices - search in file names first (most reliable when extracted data is missing)
+            # 4. Search in file names with full query
             stmt_file = (
                 select(Invoice.id)
                 .where(Invoice.file_name.ilike(f"%{query_lower}%"))
@@ -221,7 +268,7 @@ class ChatbotEngine:
             result_file = await self.session.execute(stmt_file)
             file_ids = [row[0] for row in result_file.fetchall()]
 
-            # Also try searching in extracted data (if available)
+            # 5. Search in extracted data
             invoice_ids = list(file_ids)
             try:
                 stmt_extracted = (
@@ -237,10 +284,21 @@ class ChatbotEngine:
                 extracted_ids = [row[0] for row in result_extracted.fetchall()]
                 invoice_ids.extend(extracted_ids)
             except Exception:
-                # If extracted data search fails, just use file name results
                 pass
 
-            # Remove duplicates and limit
+            # 6. Keyword fallback: search for individual keywords if still no results
+            if not invoice_ids:
+                keywords = [k for k in query_lower.split() if len(k) > 3 and k not in ["invoice", "details", "list", "about"]]
+                if keywords:
+                    logger.info("Trying keyword fallback search", keywords=keywords)
+                    keyword_ids = []
+                    for kw in keywords:
+                        stmt = select(Invoice.id).where(Invoice.file_name.ilike(f"%{kw}%"))
+                        res = await self.session.execute(stmt)
+                        keyword_ids.extend([row[0] for row in res.fetchall()])
+                    if keyword_ids:
+                        return list(dict.fromkeys(keyword_ids))[:settings.CHATBOT_MAX_RESULTS]
+
             unique_ids = list(dict.fromkeys(invoice_ids))[: settings.CHATBOT_MAX_RESULTS]
 
             logger.info("Database query returned results", count=len(unique_ids))
@@ -462,7 +520,7 @@ class ChatbotEngine:
             # Add current user prompt
             messages.append({"role": "user", "content": user_prompt})
 
-            response = self.llm_client.chat.completions.create(
+            response = await self.llm_client.chat.completions.create(
                 model=self.llm_model,
                 messages=messages,
                 temperature=settings.DEEPSEEK_TEMPERATURE,

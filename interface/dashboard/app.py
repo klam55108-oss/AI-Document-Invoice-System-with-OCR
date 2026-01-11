@@ -462,7 +462,7 @@ def display_invoice_list(
                         async def bulk_reprocess():
                             async with httpx.AsyncClient(timeout=300.0) as client:
                                 response = await client.post(
-                                    "http://localhost:8000/api/v1/invoices/bulk/reprocess",
+                                    "http://127.0.0.1:8000/api/v1/invoices/bulk/reprocess",
                                     json={
                                         "invoice_ids": invoice_ids,
                                         "force_reprocess": force_reprocess,
