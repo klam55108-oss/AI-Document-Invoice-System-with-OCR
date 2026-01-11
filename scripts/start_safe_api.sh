@@ -4,6 +4,11 @@
 # 2. Kill any existing uvicorn processes on port 8000
 # 3. Optimized workers
 
+# Load environment variables if .env exists
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
 # Default port
 PORT=${API_PORT:-8000}
 

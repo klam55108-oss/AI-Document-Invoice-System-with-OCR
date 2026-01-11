@@ -54,7 +54,7 @@ uvicorn interface.api.main:app --reload
 # To suppress verbose output, redirect stderr: 2>/dev/null
 # Add timeout to prevent hanging: --max-time 120
 
-curl --max-time 120 -X POST "http://localhost:${API_PORT:-8000}/api/v1/invoices/process" \
+curl --max-time 120 -X POST "http://localhost:${API_PORT}/api/v1/invoices/process" \
   -H "Content-Type: application/json" \
   -d '{
     "file_path": "grok/1.jpg",
@@ -91,7 +91,7 @@ python scripts/process_invoices.py --dir data/grok --recursive
 Expected output:
 ```
 📄 Found N invoice files to process
-🌐 API endpoint: http://localhost:${API_PORT:-8000}
+🌐 API endpoint: http://localhost:${API_PORT}
 🔄 Force reprocess: False
 🆔 Job ID: ...
 ------------------------------------------------------------
@@ -152,7 +152,7 @@ psql $DATABASE_URL -c "\d invoices" | grep -E "storage_path|file_path"
 **Symptom**: Script shows "❌ Failed" for all files
 
 **Debug Steps**:
-1. Check API is running: `curl http://localhost:${API_PORT:-8000}/health`
+1. Check API is running: `curl http://localhost:${API_PORT}/health`
 2. Verify file paths are correct
 3. Check API logs for errors
 4. Test single file manually with curl

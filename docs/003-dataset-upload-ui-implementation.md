@@ -178,7 +178,7 @@ pytest tests/integration/test_upload_api.py
 uvicorn interface.api.main:app --reload
 
 # Upload file via curl
-curl -X POST "http://localhost:${API_PORT:-8000}/api/v1/uploads" \
+curl -X POST "http://localhost:${API_PORT}/api/v1/uploads" \
   -F "files=@invoice.pdf" \
   -F "subfolder=uploads" \
   -F "group=test-batch"

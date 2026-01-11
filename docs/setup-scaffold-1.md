@@ -212,12 +212,13 @@ docker exec ai-einvoicing-db psql -U einvoice -d einvoicing -c "\dt"
 
 **Start FastAPI API:**
 ```bash
-uvicorn interface.api.main:app --reload
+# Start API
+python interface/api/main.py --reload
 ```
 
-API will be available at: `http://localhost:${API_PORT:-8000}`
-- API Documentation: `http://localhost:${API_PORT:-8000}/docs`
-- Health Check: `http://localhost:${API_PORT:-8000}/health`
+API will be available at: `http://localhost:${API_PORT}`
+- API Documentation: `http://localhost:${API_PORT}/docs`
+- Health Check: `http://localhost:${API_PORT}/health`
 
 **Start Streamlit Dashboard:**
 ```bash
@@ -495,10 +496,10 @@ docker exec ai-einvoicing-db psql -U einvoice -d einvoicing -c "\d invoices"
 
 ```bash
 # Health check
-curl http://localhost:${API_PORT:-8000}/health
+curl http://localhost:${API_PORT}/health
 
 # List invoices
-curl http://localhost:${API_PORT:-8000}/api/v1/invoices
+curl http://localhost:${API_PORT}/api/v1/invoices
 ```
 
 ### Verify Processing
@@ -506,7 +507,7 @@ curl http://localhost:${API_PORT:-8000}/api/v1/invoices
 1. Place a sample invoice file in the `data/` directory
 2. Process via API:
 ```bash
-curl -X POST http://localhost:${API_PORT:-8000}/api/v1/invoices/process \
+curl -X POST http://localhost:${API_PORT}/api/v1/invoices/process \
   -H "Content-Type: application/json" \
   -d '{"file_path": "data/sample_invoice.pdf"}'
 ```

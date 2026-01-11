@@ -120,11 +120,24 @@ async def root():
 def main():
     """Main entry point for running the API server."""
     import uvicorn
+    import argparse
+    from dotenv import load_dotenv
     from core.config import settings
+
+    # Ensure .env is loaded before reading settings
+    load_dotenv()
+
+    parser = argparse.ArgumentParser(description="Run the E-Invoice Processing API")
+    parser.add_argument(
+        "--reload", action="store_true", help="Enable auto-reload on code changes"
+    )
+    args = parser.parse_args()
 
     host = os.getenv("API_HOST", settings.API_HOST)
     port = int(os.getenv("API_PORT", settings.API_PORT))
-    uvicorn.run(app, host=host, port=port)
+
+    logger.info("Starting API server", host=host, port=port, reload=args.reload)
+    uvicorn.run("interface.api.main:app" if args.reload else app, host=host, port=port, reload=args.reload)
 
 
 if __name__ == "__main__":

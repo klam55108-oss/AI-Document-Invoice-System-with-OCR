@@ -20,8 +20,7 @@ pip install -e ".[dev]"
 # Create .env with:
 # DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:${PGDB_PORT:-5432}/einvoicing
 # ENCRYPTION_KEY=your-key (Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-# API_PORT=8000
-# UI_PORT=8501
+# API_PORT=8000, UI_PORT=8501
 ```
 
 ### 3. Start Services
@@ -32,8 +31,8 @@ docker-compose up -d
 # Run Migrations
 alembic upgrade head
 
-# Start API (Port 8000)
-uvicorn interface.api.main:app --reload
+# Start API
+python interface/api/main.py --reload
 
 # Start Dashboard (Port 8501)
 streamlit run interface/dashboard/app.py
@@ -51,14 +50,14 @@ python scripts/process_invoices.py
 
 Or via API:
 ```bash
-curl -X POST "http://localhost:${API_PORT:-8000}/api/v1/invoices/process" \
+curl -X POST "http://localhost:${API_PORT}/api/v1/invoices/process" \
   -H "Content-Type: application/json" \
   -d '{"file_path": "invoice-1.png"}'
 ```
 
 ### View Results
-- **Dashboard**: [http://localhost:${UI_PORT:-8501}](http://localhost:${UI_PORT:-8501})
-- **API Docs**: [http://localhost:${API_PORT:-8000}/docs](http://localhost:${API_PORT:-8000}/docs)
+- **Dashboard**: [http://localhost:${UI_PORT}](http://localhost:${UI_PORT})
+- **API Docs**: [http://localhost:${API_PORT}/docs](http://localhost:${API_PORT}/docs)
 
 ---
 

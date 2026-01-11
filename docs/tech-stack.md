@@ -424,7 +424,7 @@ Each invoice goes through these stages:
 - Verify database schema is up to date: `alembic current` should show latest migration
 
 ### API not responding:
-- Check if backend is running: `curl http://localhost:${API_PORT:-8000}/health`
+- Check if backend is running: `curl http://localhost:${API_PORT}/health`
 - Verify port 8000 is not in use by another service
 - Check API logs for startup errors
 - Verify database is accessible: health endpoint will show "degraded" if database issues exist

@@ -347,7 +347,7 @@ def render_chatbot_tab():
     if "chatbot_session_id" not in st.session_state:
         # Create new session via API
         with httpx.Client() as client:
-            response = client.post("http://localhost:${API_PORT:-8000}/api/v1/chatbot/sessions")
+            response = client.post("http://localhost:${API_PORT}/api/v1/chatbot/sessions")
             if response.status_code == 201:
                 st.session_state.chatbot_session_id = response.json()["session_id"]
             else:
@@ -379,7 +379,7 @@ def render_chatbot_tab():
             with st.spinner("Thinking..."):
                 with httpx.Client() as client:
                     response = client.post(
-                        "http://localhost:${API_PORT:-8000}/api/v1/chatbot/chat",
+                        "http://localhost:${API_PORT}/api/v1/chatbot/chat",
                         json={
                             "message": prompt,
                             "session_id": st.session_state.chatbot_session_id
@@ -428,10 +428,10 @@ streamlit run interface/dashboard/app.py
 
 ```bash
 # Create session
-curl -X POST http://localhost:${API_PORT:-8000}/api/v1/chatbot/sessions
+curl -X POST http://localhost:${API_PORT}/api/v1/chatbot/sessions
 
 # Send message
-curl -X POST http://localhost:${API_PORT:-8000}/api/v1/chatbot/chat \
+curl -X POST http://localhost:${API_PORT}/api/v1/chatbot/chat \
   -H "Content-Type: application/json" \
   -d '{
     "message": "How many images did you train from dataset jimeng folder, and list the total cost?",

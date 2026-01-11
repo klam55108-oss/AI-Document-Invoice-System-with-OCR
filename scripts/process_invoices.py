@@ -91,6 +91,11 @@ async def process_invoices(
     
     if not invoice_files:
         print(f"❌ No matching invoice files found in {search_dir}")
+        if not recursive:
+            # Check if there are subdirectories that might contain files
+            subdirs = [d for d in search_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+            if subdirs:
+                print(f"💡 Found {len(subdirs)} subdirectories (e.g., {subdirs[0].name}/). Try adding --recursive or -r to search them.")
         return
     
     print(f"📄 Found {len(invoice_files)} files to process")
@@ -188,6 +193,10 @@ async def process_invoices(
 
 if __name__ == "__main__":
     import argparse
+    from dotenv import load_dotenv
+    
+    # Ensure .env is loaded to pick up API_PORT and other settings
+    load_dotenv()
     
     parser = argparse.ArgumentParser(description="Consolidated invoice processing script")
     parser.add_argument(

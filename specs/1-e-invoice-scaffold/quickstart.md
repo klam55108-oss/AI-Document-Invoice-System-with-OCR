@@ -150,11 +150,11 @@ mkdir -p data
 # Run health check
 python -m interface.api.main --check
 
-# Or start API server
-uvicorn interface.api.main:app --reload --host 0.0.0.0 --port 8000
+# Start API (Port will be read from .env, API_PORT)
+python interface/api/main.py --reload
 
 # In another terminal, test health endpoint:
-curl http://localhost:${API_PORT:-8000}/health
+curl http://localhost:${API_PORT}/health
 ```
 
 Expected response:
@@ -175,7 +175,7 @@ Expected response:
 cp /path/to/sample_invoice.pdf data/
 
 # Trigger processing via API
-curl -X POST http://localhost:${API_PORT:-8000}/api/v1/invoices/process \
+curl -X POST http://localhost:${API_PORT}/api/v1/invoices/process \
   -H "Content-Type: application/json" \
   -d '{"file_path": "sample_invoice.pdf"}'
 ```
@@ -192,10 +192,10 @@ python -m ingestion.orchestrator process data/sample_invoice.pdf
 
 ```bash
 # List all invoices
-curl http://localhost:${API_PORT:-8000}/api/v1/invoices
+curl http://localhost:${API_PORT}/api/v1/invoices
 
 # Get specific invoice details
-curl http://localhost:${API_PORT:-8000}/api/v1/invoices/{invoice_id}
+curl http://localhost:${API_PORT}/api/v1/invoices/{invoice_id}
 ```
 
 ### Option B: Via Streamlit Dashboard
@@ -286,7 +286,7 @@ ai-einvoicing/
 ## Support
 
 - **Documentation**: See `README.md` and `docs/` directory
-- **API Docs**: http://localhost:${API_PORT:-8000}/docs (FastAPI auto-generated)
+- **API Docs**: http://localhost:${API_PORT}/docs (FastAPI auto-generated)
 - **Specification**: `specs/1-e-invoice-scaffold/spec.md`
 - **Implementation Plan**: `specs/1-e-invoice-scaffold/plan.md`
 
