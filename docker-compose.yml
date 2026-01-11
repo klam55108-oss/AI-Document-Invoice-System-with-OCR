@@ -9,11 +9,11 @@ services:
       POSTGRES_PASSWORD: einvoice_dev
       POSTGRES_DB: einvoicing
     ports:
-      - "5432:5432"
+      - "${PGDB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U einvoice"]
+      test: [ "CMD-SHELL", "pg_isready -U einvoice" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,4 +21,5 @@ services:
 
 volumes:
   postgres_data:
+
 

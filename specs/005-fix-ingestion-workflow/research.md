@@ -9,7 +9,7 @@
 The ingestion workflow has multiple issues:
 1. `scripts/process_invoices.py` not working well
 2. POST API `/api/v1/invoices/process` not working well
-3. Dashboard at `localhost:8501` cannot display invoices list
+3. Dashboard at `localhost:${UI_PORT:-8501}` cannot display invoices list
 4. Potential schema mismatches between database and code
 5. Probe files (`probe_paddle*.py`, `debug_invoice.py`) in root directory need cleanup
 

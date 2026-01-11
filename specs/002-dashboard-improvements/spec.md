@@ -3,7 +3,7 @@
 **Feature Branch**: `002-dashboard-improvements`  
 **Created**: 2025-01-27  
 **Status**: Draft  
-**Input**: User description: "improve the http://localhost:8501/ dashboard"
+**Input**: User description: "improve the http://localhost:${UI_PORT:-8501}/ dashboard"
 
 ## User Scenarios & Testing *(mandatory)*
 

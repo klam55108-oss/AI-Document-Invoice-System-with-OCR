@@ -187,7 +187,9 @@ def main():
 
     with tab3:
         from interface.dashboard.components.upload import render_upload_ui
-        render_upload_ui()
+        from core.config import settings
+        api_port = os.getenv("API_PORT", str(settings.API_PORT))
+        render_upload_ui(api_base_url=f"http://127.0.0.1:{api_port}")
 
     with tab4:
         render_chatbot_tab()
@@ -460,9 +462,12 @@ def display_invoice_list(
                 try:
                     with st.spinner(f"Reprocessing {len(invoice_ids)} invoice(s)..."):
                         async def bulk_reprocess():
+                            from core.config import settings
+                            api_port = os.getenv("API_PORT", str(settings.API_PORT))
+                            api_base = f"http://127.0.0.1:{api_port}"
                             async with httpx.AsyncClient(timeout=300.0) as client:
                                 response = await client.post(
-                                    "http://127.0.0.1:8000/api/v1/invoices/bulk/reprocess",
+                                    f"{api_base}/api/v1/invoices/bulk/reprocess",
                                     json={
                                         "invoice_ids": invoice_ids,
                                         "force_reprocess": force_reprocess,

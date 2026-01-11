@@ -120,9 +120,10 @@ async def root():
 def main():
     """Main entry point for running the API server."""
     import uvicorn
+    from core.config import settings
 
-    host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", "8000"))
+    host = os.getenv("API_HOST", settings.API_HOST)
+    port = int(os.getenv("API_PORT", settings.API_PORT))
     uvicorn.run(app, host=host, port=port)
 
 

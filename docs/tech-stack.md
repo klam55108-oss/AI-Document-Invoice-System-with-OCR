@@ -385,6 +385,92 @@ quadrantChart
 
 ---
 
+## 🧠 Understanding Processing
+
+Each invoice goes through these stages:
+1. **File Ingestion**: File is read and hashed (SHA-256) for duplicate detection
+2. **OCR/Text Extraction**: Image/PDF is processed to extract text (PaddleOCR for images, Docling for PDFs)
+3. **AI Extraction**: Structured data is extracted using DeepSeek-chat with manual JSON parsing for reliability (vendor, amounts, dates, etc.)
+4. **Validation**: Business rules are checked (math validation, tax rate constraints, etc.)
+5. **Self-Correction**: If validation fails, the system attempts to refine extraction by capping confidence and adjusting math logic
+6. **Storage**: Results are stored in PostgreSQL with JSON-safe serialization
+
+**Processing Status:**
+- `pending` - Initial state
+- `queued` - Added to processing queue
+- `processing` - Currently being processed
+- `completed` - Successfully processed
+- `failed` - Processing failed (check error_message)
+
+---
+
+## 🛠️ Troubleshooting
+
+### If processing fails:
+- Check backend logs for error messages (logs include processing stage information)
+- Verify the file exists in `data/` directory
+- Check database connection in `.env` file: `DATABASE_URL` must be set
+- Ensure all dependencies are installed: `pip install -e ".[dev]"`
+- Run database migrations: `alembic upgrade head`
+- Check file permissions: ensure `data/` directory is writable
+- Verify file is not corrupted: check file size > 0
+- Check for missing processing libraries (OCR, PDF): error messages will indicate which library is missing
+
+### If dashboard shows no invoices:
+- Make sure you've processed at least one invoice
+- Check the status filter in the sidebar (may be filtering out your invoices)
+- Verify database connection: check `.env` file has `DATABASE_URL`
+- Check dashboard logs for database query errors
+- Verify database schema is up to date: `alembic current` should show latest migration
+
+### API not responding:
+- Check if backend is running: `curl http://localhost:${API_PORT:-8000}/health`
+- Verify port 8000 is not in use by another service
+- Check API logs for startup errors
+- Verify database is accessible: health endpoint will show "degraded" if database issues exist
+
+---
+
+## 📊 Current Implementation Status
+
+### ✅ Completed (Scaffold Phase):
+- Project structure with three-layer architecture (Sensory, Brain, Interaction)
+- PostgreSQL database with pgvector extension
+- Async SQLAlchemy 2.0 ORM models
+- File processing pipeline (PDF, Excel, CSV, Images)
+- Basic data extraction and validation framework
+- FastAPI REST API with async endpoints
+- Streamlit review dashboard
+- File-level encryption at rest
+- SHA-256 file hashing for duplicate detection
+- Database migrations with Alembic
+
+### ✅ Recently Completed (Ingestion Workflow Fixes):
+- Non-blocking PaddleOCR initialization (prevents system crashes)
+- Comprehensive error handling with user-friendly messages
+- Database schema health checks and connection retry logic
+- Enhanced logging with processing stage tracking
+- OCR timeout handling with retry logic (180s default, up to 10min for large images)
+- File validation (size limits, corruption checks)
+- Background processing with proper session management
+- Status tracking with immediate database commits
+- Performance monitoring (processing time tracking)
+
+### ✅ Completed (Agentic Phase):
+- Docling integration for advanced PDF processing
+- DeepSeek-chat integration as primary extraction LLM
+- pgqueuer setup for background job management
+- Enhanced validation rules (Tax rate auto-detection, Line item math fallback)
+- Chatbot engine for conversational invoice querying
+- Robust transaction management with explicit rollbacks
+
+### 🚧 Future Roadmap:
+- Multi-agent coordination for complex multi-page document reconciliation
+- Integration with external ERP (Odoo/SAP) APIs
+- Enhanced local embedding model performance tuning
+
+---
+
 ## 📚 Further Reading & Resources
 
 ### Official Documentation

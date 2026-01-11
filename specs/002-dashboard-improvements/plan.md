@@ -5,7 +5,7 @@
 
 ## Summary
 
-Enhance the Streamlit dashboard at http://localhost:8501/ with comprehensive improvements to both "Invoice List" and "Invoice Detail" tabs. The improvements focus on: (1) Enhanced analytics and visualizations for data-driven insights, (2) Data export capabilities for external reporting, (3) Advanced filtering and bulk actions for operational efficiency, (4) Robust file path resolution and missing file handling, (5) Improved validation result display with actionable error messages, and (6) Graceful handling of missing invoice data fields (subtotal, tax_amount, etc.) following industry-standard invoice processing patterns.
+Enhance the Streamlit dashboard at http://localhost:${UI_PORT:-8501}/ with comprehensive improvements to both "Invoice List" and "Invoice Detail" tabs. The improvements focus on: (1) Enhanced analytics and visualizations for data-driven insights, (2) Data export capabilities for external reporting, (3) Advanced filtering and bulk actions for operational efficiency, (4) Robust file path resolution and missing file handling, (5) Improved validation result display with actionable error messages, and (6) Graceful handling of missing invoice data fields (subtotal, tax_amount, etc.) following industry-standard invoice processing patterns.
 
 ## Technical Context
 

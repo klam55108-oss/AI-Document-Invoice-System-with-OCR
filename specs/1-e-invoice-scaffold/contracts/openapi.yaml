@@ -9,7 +9,7 @@ info:
     name: AI E-Invoicing Team
 
 servers:
-  - url: http://localhost:8000
+  - url: http://localhost:${API_PORT:-8000}
     description: Local development server
 
 paths:

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     API_VERSION: str = "1.0.0"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
+    UI_PORT: int = 8501
+    PGDB_PORT: int = 5432
 
     # Logging
     LOG_LEVEL: str = "INFO"

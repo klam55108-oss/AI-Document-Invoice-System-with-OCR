@@ -190,7 +190,7 @@ pytest --cov=interface --cov=core --cov-report=html
    ```
 
 3. **Test upload flow**:
-   - Navigate to dashboard: http://localhost:8501
+   - Navigate to dashboard: http://localhost:${UI_PORT:-8501}
    - Click "Upload Files" tab
    - Select test invoice files
    - Verify upload and processing

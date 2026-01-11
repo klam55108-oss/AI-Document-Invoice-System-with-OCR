@@ -167,7 +167,7 @@ Create a `.env` file in the project root:
 
 ```bash
 # Database Configuration
-DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:5432/einvoicing
+DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:${PGDB_PORT:-5432}/einvoicing
 
 # Encryption Key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 ENCRYPTION_KEY=your-generated-encryption-key-here
@@ -215,16 +215,16 @@ docker exec ai-einvoicing-db psql -U einvoice -d einvoicing -c "\dt"
 uvicorn interface.api.main:app --reload
 ```
 
-API will be available at: `http://localhost:8000`
-- API Documentation: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/health`
+API will be available at: `http://localhost:${API_PORT:-8000}`
+- API Documentation: `http://localhost:${API_PORT:-8000}/docs`
+- Health Check: `http://localhost:${API_PORT:-8000}/health`
 
 **Start Streamlit Dashboard:**
 ```bash
 streamlit run interface/dashboard/app.py
 ```
 
-Dashboard will be available at: `http://localhost:8501`
+Dashboard will be available at: `http://localhost:${UI_PORT:-8501}`
 
 ## Issues Encountered & Fixes
 
@@ -252,7 +252,7 @@ sqlalchemy.exc.NoSuchModuleError: Can't load plugin: sqlalchemy.dialects:driver
 
 **Fix:** Updated `alembic.ini` with correct database URL:
 ```ini
-sqlalchemy.url = postgresql+asyncpg://einvoice:einvoice_dev@localhost:5432/einvoicing
+sqlalchemy.url = postgresql+asyncpg://einvoice:einvoice_dev@localhost:${PGDB_PORT:-5432}/einvoicing
 ```
 
 ### Issue 3: pgqueuer Extension Not Available
@@ -495,10 +495,10 @@ docker exec ai-einvoicing-db psql -U einvoice -d einvoicing -c "\d invoices"
 
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl http://localhost:${API_PORT:-8000}/health
 
 # List invoices
-curl http://localhost:8000/api/v1/invoices
+curl http://localhost:${API_PORT:-8000}/api/v1/invoices
 ```
 
 ### Verify Processing
@@ -506,7 +506,7 @@ curl http://localhost:8000/api/v1/invoices
 1. Place a sample invoice file in the `data/` directory
 2. Process via API:
 ```bash
-curl -X POST http://localhost:8000/api/v1/invoices/process \
+curl -X POST http://localhost:${API_PORT:-8000}/api/v1/invoices/process \
   -H "Content-Type: application/json" \
   -d '{"file_path": "data/sample_invoice.pdf"}'
 ```

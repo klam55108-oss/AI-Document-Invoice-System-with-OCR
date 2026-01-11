@@ -11,7 +11,12 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 # API base URL
-API_BASE_URL = "http://localhost:8000/api/v1"
+import os
+def get_api_base_url():
+    port = os.getenv("API_PORT", str(settings.API_PORT))
+    return f"http://localhost:{port}/api/v1"
+
+API_BASE_URL = get_api_base_url()
 
 
 def render_chatbot_tab() -> None:
@@ -36,7 +41,7 @@ def render_chatbot_tab() -> None:
                     return
         except Exception as e:
             st.error(f"Failed to connect to API: {str(e)}")
-            st.info("Make sure the FastAPI server is running on port 8000")
+            st.info(f"Make sure the FastAPI server is running on port {os.getenv('API_PORT', settings.API_PORT)}")
             return
 
     if "chatbot_messages" not in st.session_state:
@@ -123,7 +128,7 @@ def render_chatbot_tab() -> None:
                     logger.warning("Chatbot request timeout", session_id=st.session_state.chatbot_session_id)
                 except httpx.ConnectError:
                     message_placeholder.error(
-                        "🔌 Failed to connect to API. Please make sure the FastAPI server is running on port 8000."
+                        f"🔌 Failed to connect to API. Please make sure the FastAPI server is running on port {os.getenv('API_PORT', settings.API_PORT)}."
                     )
                     logger.error("Chatbot API connection error")
                 except httpx.HTTPStatusError as e:

@@ -66,7 +66,7 @@ services:
       POSTGRES_PASSWORD: einvoice_dev
       POSTGRES_DB: einvoicing
     ports:
-      - "5432:5432"
+      - "${PGDB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -96,8 +96,8 @@ Create `.env` file in project root:
 
 ```bash
 # Database Configuration
-DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:5432/einvoicing
-DATABASE_SYNC_URL=postgresql://einvoice:einvoice_dev@localhost:5432/einvoicing
+DATABASE_URL=postgresql+asyncpg://einvoice:einvoice_dev@localhost:${PGDB_PORT:-5432}/einvoicing
+DATABASE_SYNC_URL=postgresql://einvoice:einvoice_dev@localhost:${PGDB_PORT:-5432}/einvoicing
 
 # Encryption (generate a key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 ENCRYPTION_KEY=your-generated-encryption-key-here
@@ -154,7 +154,7 @@ python -m interface.api.main --check
 uvicorn interface.api.main:app --reload --host 0.0.0.0 --port 8000
 
 # In another terminal, test health endpoint:
-curl http://localhost:8000/health
+curl http://localhost:${API_PORT:-8000}/health
 ```
 
 Expected response:
@@ -175,7 +175,7 @@ Expected response:
 cp /path/to/sample_invoice.pdf data/
 
 # Trigger processing via API
-curl -X POST http://localhost:8000/api/v1/invoices/process \
+curl -X POST http://localhost:${API_PORT:-8000}/api/v1/invoices/process \
   -H "Content-Type: application/json" \
   -d '{"file_path": "sample_invoice.pdf"}'
 ```
@@ -192,10 +192,10 @@ python -m ingestion.orchestrator process data/sample_invoice.pdf
 
 ```bash
 # List all invoices
-curl http://localhost:8000/api/v1/invoices
+curl http://localhost:${API_PORT:-8000}/api/v1/invoices
 
 # Get specific invoice details
-curl http://localhost:8000/api/v1/invoices/{invoice_id}
+curl http://localhost:${API_PORT:-8000}/api/v1/invoices/{invoice_id}
 ```
 
 ### Option B: Via Streamlit Dashboard
@@ -204,7 +204,7 @@ curl http://localhost:8000/api/v1/invoices/{invoice_id}
 # Start Streamlit dashboard
 streamlit run interface/dashboard/app.py --server.port 8501
 
-# Open browser to http://localhost:8501
+# Open browser to http://localhost:${UI_PORT:-8501}
 ```
 
 ## Troubleshooting
@@ -286,7 +286,7 @@ ai-einvoicing/
 ## Support
 
 - **Documentation**: See `README.md` and `docs/` directory
-- **API Docs**: http://localhost:8000/docs (FastAPI auto-generated)
+- **API Docs**: http://localhost:${API_PORT:-8000}/docs (FastAPI auto-generated)
 - **Specification**: `specs/1-e-invoice-scaffold/spec.md`
 - **Implementation Plan**: `specs/1-e-invoice-scaffold/plan.md`
 

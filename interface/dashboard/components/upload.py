@@ -27,12 +27,18 @@ ACCEPTED_TYPES = [
 MAX_FILE_SIZE = 50 * 1024 * 1024
 
 
-def render_upload_ui(api_base_url: str = "http://127.0.0.1:8000") -> None:
+import os
+from core.config import settings
+
+def render_upload_ui(api_base_url: str | None = None) -> None:
     """Render the file upload UI component.
 
     Args:
         api_base_url: Base URL for the API server
     """
+    if api_base_url is None:
+        api_port = os.getenv("API_PORT", str(settings.API_PORT))
+        api_base_url = f"http://127.0.0.1:{api_port}"
     st.header("📤 Upload Invoice Files")
     st.markdown("Upload invoice files directly through the web interface. Files will be automatically processed.")
 
