@@ -1,6 +1,6 @@
 """Conversation session management for chatbot."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from uuid import UUID, uuid4
 from typing import Optional
 from dataclasses import dataclass, field
@@ -36,13 +36,13 @@ class ConversationSession:
         max_messages = settings.CHATBOT_CONTEXT_WINDOW
         if len(self.messages) > max_messages:
             self.messages = self.messages[-max_messages:]
-        self.last_activity = datetime.utcnow()
+        self.last_activity = datetime.now(UTC)
 
     def is_expired(self, timeout_seconds: int | None = None) -> bool:
         """Check if session has expired due to inactivity."""
         if timeout_seconds is None:
             timeout_seconds = settings.CHATBOT_SESSION_TIMEOUT
-        elapsed = (datetime.utcnow() - self.last_activity).total_seconds()
+        elapsed = (datetime.now(UTC) - self.last_activity).total_seconds()
         return elapsed > timeout_seconds
 
 
@@ -57,7 +57,7 @@ class SessionManager:
     def create_session(self) -> ConversationSession:
         """Create a new conversation session."""
         session_id = uuid4()
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         session = ConversationSession(
             session_id=session_id,
             created_at=now,

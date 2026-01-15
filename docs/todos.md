@@ -69,7 +69,16 @@ The database query used an inner join that required extracted data, and the WHER
 
 
 
-```bash
-./scripts/start_safe_api.sh
-python scripts/process_invoices.py --dir data/jimeng --concurrency 2 --force
-```
+## TODO
+
+- PaddleOCR, deepseek-ocr
+- LlamaIndex, langchain
+- Docling, pyPDF
+- pgvector, chromadb
+- Streamlit, react+vite, gradio
+- pgqueuer
+- sentence-transformers, text-embedding-3-small, nomic-
+- Deepseek-V3, gpt-4o
+- fastapi
+- PostgreSQL + pgvector
+- sqlalchemy, pydantic 2.0

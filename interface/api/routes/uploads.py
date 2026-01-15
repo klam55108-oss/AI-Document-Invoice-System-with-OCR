@@ -306,7 +306,7 @@ async def upload_files(
             upload_metadata = {
                 "subfolder": upload_subfolder,
                 "upload_source": "web-ui",
-                "uploaded_at": datetime.utcnow().isoformat() + "Z",
+                "uploaded_at": datetime.now(UTC).isoformat() + "Z",
             }
             if group:
                 upload_metadata["group"] = group

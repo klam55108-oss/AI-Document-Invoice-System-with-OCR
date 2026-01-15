@@ -10,6 +10,9 @@ import httpx
 
 
 import os
+# Add project root to path
+sys.path.append(os.getcwd())
+
 from core.config import settings
 
 async def process_invoice(

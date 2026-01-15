@@ -7,6 +7,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.getcwd())
+
 from core.database import check_schema_health, init_db
 
 # Load environment variables

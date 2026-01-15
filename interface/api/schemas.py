@@ -1,26 +1,27 @@
 """Pydantic schemas for API request/response models."""
 
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthResponse(BaseModel):
     """Health check response schema."""
 
     status: str = Field(..., description="Health status", examples=["healthy", "degraded"])
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Response timestamp")
     version: str = Field(..., description="API version", examples=["1.0.0"])
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "healthy",
                 "timestamp": "2024-12-19T10:30:00Z",
                 "version": "1.0.0",
             }
         }
+    )
 
 
 # Request schemas
@@ -40,7 +41,7 @@ class ApiResponse(BaseModel):
     """Base API response envelope."""
 
     status: str = Field(..., description="Response status", examples=["success", "error"])
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Response timestamp")
 
 
 class ErrorDetail(BaseModel):
@@ -175,7 +176,7 @@ class InvoiceDetailResponse(ApiResponse):
 class BulkReprocessRequest(BaseModel):
     """Request to reprocess multiple invoices."""
 
-    invoice_ids: list[str] = Field(..., description="List of invoice UUIDs to reprocess", min_items=1)
+    invoice_ids: list[str] = Field(..., description="List of invoice UUIDs to reprocess", min_length=1)
     force_reprocess: bool = Field(False, description="Force reprocessing even if already processed")
 
 

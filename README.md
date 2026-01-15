@@ -45,19 +45,21 @@ streamlit run interface/dashboard/app.py
 ### Process Invoices
 Run the consolidated script to process files in the `data/` directory:
 ```bash
-python scripts/process_invoices.py
+$ python scripts/process_invoices.py
+$ python scripts/process_invoices.py --recursive --dir data/ --force --concurrency 2
+$ python scripts/process_invoices.py --dir data/jimeng --pattern "invoice-1.png" --force --background --api-url "http://127.0.0.1:8800"
 ```
 
 Or via API:
 ```bash
-curl -X POST "http://localhost:${API_PORT}/api/v1/invoices/process" \
+curl -X POST "http://localhost:8000/api/v1/invoices/process" \
   -H "Content-Type: application/json" \
   -d '{"file_path": "invoice-1.png"}'
 ```
 
 ### View Results
-- **Dashboard**: [http://localhost:${UI_PORT}](http://localhost:${UI_PORT})
-- **API Docs**: [http://localhost:${API_PORT}/docs](http://localhost:${API_PORT}/docs)
+- **Dashboard**: [http://localhost:8501](http://localhost:8501)
+- **API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 

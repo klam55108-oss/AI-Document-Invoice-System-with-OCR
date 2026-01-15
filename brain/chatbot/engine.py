@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -63,7 +63,7 @@ class ChatbotEngine:
                 message_id=uuid4(),
                 role="user",
                 content=message,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
             session.add_message(user_msg)
 
@@ -111,7 +111,7 @@ class ChatbotEngine:
                 message_id=uuid4(),
                 role="assistant",
                 content=response,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
                 metadata={
                     "invoice_ids": [UUID(inv["id"]) for inv in invoices_data],
                     "invoice_count": len(invoices_data),

@@ -5,7 +5,7 @@ import asyncio
 import os
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 from uuid import uuid4
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -66,7 +66,7 @@ async def debug_chatbot(test_query: str = None):
                 print(f"Query: \"{test_query}\"")
                 
                 chatbot = ChatbotEngine(session)
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 chat_session = ConversationSession(
                     session_id=uuid4(),
                     created_at=now,

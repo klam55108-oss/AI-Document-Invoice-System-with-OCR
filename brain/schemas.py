@@ -1,10 +1,10 @@
 """Pydantic models for invoice data extraction and validation."""
 
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class LineItem(BaseModel):
@@ -99,8 +99,8 @@ class ExtractedDataSchema(BaseModel):
                 self.extraction_confidence = sum(non_null_confidences) / Decimal(len(non_null_confidences))
         return self
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "vendor_name": "Acme Corporation",
                 "invoice_number": "INV-2024-001",
@@ -111,6 +111,7 @@ class ExtractedDataSchema(BaseModel):
                 "currency": "USD",
             }
         }
+    )
 
 
 class ValidationRuleResult(BaseModel):
@@ -123,7 +124,7 @@ class ValidationRuleResult(BaseModel):
     actual_value: Decimal | None = Field(None, description="Actual value from invoice")
     tolerance: Decimal | None = Field(None, description="Allowed tolerance")
     error_message: str | None = Field(None, description="Error details if failed")
-    validated_at: datetime = Field(default_factory=datetime.utcnow, description="Validation timestamp")
+    validated_at: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Validation timestamp")
 
     @field_validator("status")
     @classmethod

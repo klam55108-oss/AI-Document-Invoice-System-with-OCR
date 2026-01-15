@@ -1,6 +1,6 @@
 """Rate limiting for chatbot queries."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from collections import defaultdict
 from typing import Dict, List
 
@@ -20,7 +20,7 @@ class RateLimiter:
 
     def is_allowed(self, user_id: str) -> bool:
         """Check if a request is allowed for the given user."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         cutoff = now - timedelta(seconds=self.window_seconds)
 
         # Remove old requests outside the window
@@ -46,7 +46,7 @@ class RateLimiter:
         # Find oldest request in current window
         oldest = min(self.requests[user_id])
         window_end = oldest + timedelta(seconds=self.window_seconds)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         if window_end > now:
             return int((window_end - now).total_seconds())
