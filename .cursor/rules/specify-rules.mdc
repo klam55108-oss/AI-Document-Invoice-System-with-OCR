@@ -7,6 +7,7 @@ Auto-generated from all feature plans. Last updated: 2026-01-05
 - PostgreSQL (asyncpg), File system (data/ directory structure) (003-dataset-upload-ui)
 - Python 3.12 + FastAPI 0.115.x, Streamlit 1.40.x, SQLAlchemy 2.0.36, Pydantic 2.10.x, pandas 2.2.3, pypdf 5.1.x, PaddleOCR 2.9.x, OpenAI 1.58.x (001-ui-data-extract-quality)
 - PostgreSQL 17 with pgvector extension (001-ui-data-extract-quality)
+- Python 3.12 + FastAPI, Pydantic v2, SQLAlchemy 2.0 (async), asyncpg, structlog (001-resilient-config)
 
 - Python 3.12 + Streamlit >=1.39.0, pandas >=2.2.0, plotly >=5.18.0 (for charts), reportlab >=4.0.0 (for PDF export), sqlalchemy[asyncio] >=2.0.36 (002-dashboard-improvements)
 
@@ -26,10 +27,10 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.12: Follow standard conventions
 
 ## Recent Changes
+- 001-resilient-config: Added Python 3.12 + FastAPI, Pydantic v2, SQLAlchemy 2.0 (async), asyncpg, structlog
 - 001-ui-data-extract-quality: Added Python 3.12 + FastAPI 0.115.x, Streamlit 1.40.x, SQLAlchemy 2.0.36, Pydantic 2.10.x, pandas 2.2.3, pypdf 5.1.x, PaddleOCR 2.9.x, OpenAI 1.58.x
 - 003-dataset-upload-ui: Added Python 3.12 + FastAPI 0.115.0+, Streamlit 1.39.0+, SQLAlchemy 2.0.36+, Pydantic 2.9.0+
 
-- 002-dashboard-improvements: Added Python 3.12 + Streamlit >=1.39.0, pandas >=2.2.0, plotly >=5.18.0 (for charts), reportlab >=4.0.0 (for PDF export), sqlalchemy[asyncio] >=2.0.36
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

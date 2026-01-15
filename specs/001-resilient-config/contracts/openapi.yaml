@@ -1,0 +1,324 @@
+openapi: 3.0.3
+info:
+  title: Resilient Configuration API
+  version: 1.0.0
+  description: API for managing versioned module configurations and observing activation outcomes.
+servers:
+  - url: /api
+security:
+  - BearerAuth: []
+paths:
+  /v1/modules:
+    get:
+      summary: List available modules
+      responses:
+        "200":
+          description: List of modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Module"
+  /v1/stages:
+    get:
+      summary: List processing stages
+      responses:
+        "200":
+          description: List of stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProcessingStage"
+  /v1/configurations:
+    get:
+      summary: List configurations
+      responses:
+        "200":
+          description: List of configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModuleConfiguration"
+    post:
+      summary: Create a configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModuleConfigurationCreate"
+      responses:
+        "201":
+          description: Configuration created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleConfiguration"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/configurations/active:
+    get:
+      summary: Get the active configuration
+      responses:
+        "200":
+          description: Active configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleConfiguration"
+        "404":
+          description: No active configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/configurations/validate:
+    post:
+      summary: Validate a configuration without activation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModuleConfigurationCreate"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationResult"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/configurations/{config_id}:
+    get:
+      summary: Get a configuration by ID
+      parameters:
+        - in: path
+          name: config_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Configuration details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleConfiguration"
+        "404":
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/configurations/{config_id}/activate:
+    post:
+      summary: Activate a configuration
+      parameters:
+        - in: path
+          name: config_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Activation queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigActivationResult"
+        "400":
+          description: Activation rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/configurations/{config_id}/rollback:
+    post:
+      summary: Roll back to a configuration version
+      parameters:
+        - in: path
+          name: config_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Rollback queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRollbackResult"
+        "400":
+          description: Rollback rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Module:
+      type: object
+      properties:
+        module_id:
+          type: string
+        name:
+          type: string
+        stage_id:
+          type: string
+        capability_contract_id:
+          type: string
+        status:
+          type: string
+          enum: [available, unavailable, deprecated]
+        is_fallback:
+          type: boolean
+      required: [module_id, name, stage_id, capability_contract_id, status, is_fallback]
+    ProcessingStage:
+      type: object
+      properties:
+        stage_id:
+          type: string
+        name:
+          type: string
+        order:
+          type: integer
+        capability_contract_id:
+          type: string
+        is_required:
+          type: boolean
+      required: [stage_id, name, order, capability_contract_id, is_required]
+    CapabilityContract:
+      type: object
+      properties:
+        contract_id:
+          type: string
+        name:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+        outputs:
+          type: array
+          items:
+            type: string
+        guarantees:
+          type: array
+          items:
+            type: string
+      required: [contract_id, name, inputs, outputs]
+    ModuleSelection:
+      type: object
+      properties:
+        stage_id:
+          type: string
+        module_id:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+      required: [stage_id, module_id]
+    ModuleConfiguration:
+      type: object
+      properties:
+        config_id:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+          enum: [draft, validated, active, superseded, rejected]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        activated_at:
+          type: string
+          format: date-time
+          nullable: true
+        selections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModuleSelection"
+      required: [config_id, version, status, created_by, created_at, selections]
+    ModuleConfigurationCreate:
+      type: object
+      properties:
+        selections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModuleSelection"
+      required: [selections]
+    ConfigValidationResult:
+      type: object
+      properties:
+        is_valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+      required: [is_valid, errors, warnings]
+    ConfigActivationResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [queued, rejected]
+        message:
+          type: string
+      required: [status, message]
+    ConfigRollbackResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [queued, rejected]
+        message:
+          type: string
+      required: [status, message]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+      required: [error]

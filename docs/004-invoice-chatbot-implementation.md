@@ -110,6 +110,7 @@ interface/dashboard/components/
 #### ChatbotEngine (`brain/chatbot/engine.py`)
 
 The core orchestrator that:
+
 - Processes user messages and generates responses
 - Retrieves invoices using vector search (pgvector) with database fallback
 - Handles general questions directly without database queries

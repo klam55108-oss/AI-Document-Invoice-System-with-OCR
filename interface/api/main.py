@@ -10,7 +10,17 @@ from core.database import close_db, init_db
 from core.logging import configure_logging, get_logger
 from core.queue import init_queue
 from core.jobs import register_handlers
-from interface.api.routes import analytics, chatbot, health, invoices, quality, uploads
+from interface.api.routes import (
+    analytics,
+    chatbot,
+    configurations,
+    health,
+    invoices,
+    modules,
+    quality,
+    stages,
+    uploads,
+)
 from brain.chatbot.session_manager import session_manager
 
 logger = get_logger(__name__)
@@ -105,6 +115,9 @@ app.include_router(quality.router, prefix="/api/v1")
 app.include_router(analytics.router)
 app.include_router(uploads.router)
 app.include_router(chatbot.router, prefix="/api/v1")
+app.include_router(modules.router)
+app.include_router(stages.router)
+app.include_router(configurations.router)
 
 
 @app.get("/")

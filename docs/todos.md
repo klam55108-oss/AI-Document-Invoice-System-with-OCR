@@ -67,8 +67,6 @@ The database query used an inner join that required extracted data, and the WHER
 - Aggregate query fallback: when asking "how many" or "total", retrieves all invoices if specific search fails
 - Enhanced response generation: includes file names and metadata even when extracted data is missing
 
-
-
 ## TODO
 
 - PaddleOCR, deepseek-ocr
@@ -77,8 +75,28 @@ The database query used an inner join that required extracted data, and the WHER
 - pgvector, chromadb
 - Streamlit, react+vite, gradio
 - pgqueuer
-- sentence-transformers, text-embedding-3-small, nomic-
+- sentence-transformers, text-embedding-3-small, nomic-embed-text
 - Deepseek-V3, gpt-4o
 - fastapi
 - PostgreSQL + pgvector
 - sqlalchemy, pydantic 2.0
+
+
+## Tips
+
+- DeepSeek-V3 (deepseek-chat) has 128k tokens (context window)
+- Only the last 10 messages are sent: 'core/config.py: CHATBOT_CONTEXT_WINDOW: int = 10'
+- prompt engineering
+
+```text
+role: "system" -> System Prompt
+role: "user" / "assistant" -> (Previous conversation history)
+role: "user" -> Dynamic User Prompt (retrieved data + current question)
+```
+
+## TODO
+
+- snowflake
+- Vanna.ai/LangChain SQL Agent
+- vLLM
+- Langragh

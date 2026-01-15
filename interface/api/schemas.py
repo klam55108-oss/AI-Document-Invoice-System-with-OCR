@@ -58,6 +58,117 @@ class ErrorResponse(ApiResponse):
     error: ErrorDetail
 
 
+# Configuration schemas
+class ModuleInfo(BaseModel):
+    """Module metadata response."""
+
+    module_id: str
+    name: str
+    stage_id: str
+    capability_contract_id: str
+    status: str
+    is_fallback: bool = False
+
+
+class StageInfo(BaseModel):
+    """Processing stage response."""
+
+    stage_id: str
+    name: str
+    order: int
+    capability_contract_id: str
+    is_required: bool = True
+
+
+class ModuleSelectionRequest(BaseModel):
+    """Module selection in configuration request."""
+
+    stage_id: str
+    module_id: str
+    settings: dict[str, Any] | None = None
+
+
+class ModuleConfigurationCreate(BaseModel):
+    """Create configuration request."""
+
+    selections: list[ModuleSelectionRequest]
+
+
+class ModuleConfigurationInfo(BaseModel):
+    """Configuration response payload."""
+
+    config_id: str
+    version: str
+    status: str
+    created_by: str
+    created_at: datetime
+    activated_at: datetime | None = None
+    selections: list[ModuleSelectionRequest]
+
+
+class ConfigValidationResult(BaseModel):
+    """Configuration validation response."""
+
+    is_valid: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ConfigActivationResult(BaseModel):
+    """Configuration activation response."""
+
+    status: str
+    message: str
+
+
+class ConfigRollbackResult(BaseModel):
+    """Configuration rollback response."""
+
+    status: str
+    message: str
+
+
+class ModuleListResponse(ApiResponse):
+    """Response for module list endpoint."""
+
+    data: list[ModuleInfo]
+
+
+class StageListResponse(ApiResponse):
+    """Response for stage list endpoint."""
+
+    data: list[StageInfo]
+
+
+class ConfigurationListResponse(ApiResponse):
+    """Response for configuration list endpoint."""
+
+    data: list[ModuleConfigurationInfo]
+
+
+class ConfigurationDetailResponse(ApiResponse):
+    """Response for configuration detail endpoint."""
+
+    data: ModuleConfigurationInfo
+
+
+class ConfigurationValidationResponse(ApiResponse):
+    """Response for configuration validation endpoint."""
+
+    data: ConfigValidationResult
+
+
+class ConfigurationActivationResponse(ApiResponse):
+    """Response for configuration activation endpoint."""
+
+    data: ConfigActivationResult
+
+
+class ConfigurationRollbackResponse(ApiResponse):
+    """Response for configuration rollback endpoint."""
+
+    data: ConfigRollbackResult
+
 # Pagination schema
 class Pagination(BaseModel):
     """Pagination metadata."""

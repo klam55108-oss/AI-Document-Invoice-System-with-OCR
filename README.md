@@ -78,3 +78,4 @@ curl -X POST "http://localhost:8000/api/v1/invoices/process" \
 - **[Setup & Scaffold](./docs/setup-scaffold-1.md)**: Step-by-step implementation guide.
 - **[Duplicate Processing Logic](./docs/duplicate-processing-logic.md)**: How hashing and versioning works.
 - **[Multi-Agent Architecture](./docs/multi-agents-2.md)**: Advanced RAG and agent patterns.
+- **[Resilient Configuration](./docs/resilient-configuration.md)**: Module plugability, runtime configuration APIs, and workflow diagram.
