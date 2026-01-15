@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
     log_format = os.getenv("LOG_FORMAT", "json")
     configure_logging(log_level=log_level, log_format=log_format)
 
+    # Initialize resilience mapping
+    from core.resilience.provider import bootstrap_resilience
+    bootstrap_resilience()
+
     # Initialize database
     database_url = os.getenv("DATABASE_URL")
     if database_url:

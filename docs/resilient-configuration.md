@@ -4,7 +4,19 @@ Here’s how to do that:
 
 ---
 
-### ✅ 1. **Project Structure**
+### ✅ 1. **Project Structure Mapping**
+
+Since the project follows a functional/layered architecture, the resilient configuration layout is mapped to the current structure as follows:
+
+| Resilient Module | Actual Location | Description |
+| --- | --- | --- |
+| `ocr/` | `ingestion/image_processor.py` | PaddleOCR implementation for text extraction |
+| `llm/` | `brain/chatbot/engine.py` | LLM client and prompt engineering logic |
+| `embed/` & `vectordb/` | `brain/chatbot/vector_retriever.py` | Supabase/PGVector integration and retrieval |
+| `agents/` | `ingestion/orchestrator.py` | Workflow management and stage fallback logic |
+| `config/` | `core/config.py` & `core/resilience/` | App settings and the new mapping layer |
+
+This mapping is managed via a **Compatibility Layer** in `core/resilience/` to avoid massive file restructuring while providing the same "pluggable" benefits.
 
 ```
 ai_invoice_app/
@@ -44,7 +56,6 @@ ai_invoice_app/
 ├── requirements.txt
 └── README.md
 ```
-
 ---
 
 ### ✅ 2. **Dynamic Configuration (via Pydantic + YAML)**
@@ -107,7 +118,28 @@ Do the same for `embed`, `llm`, `vectordb`, and `agents`.
 
 ---
 
-### ✅ 4. **Main App Entry**
+### ✅ 4. **Compatibility Layer Implementation**
+
+To enable dynamic switching without restructuring the codebase, we use a mapping layer:
+
+**`core/resilience/mapping.py`**
+```python
+from brain.chatbot.engine import ChatbotEngine
+from ingestion.image_processor import process_image
+
+MODULE_MAPPING = {
+    "ocr": { "paddleocr": process_image },
+    "llm": { "deepseek-chat": ChatbotEngine }
+}
+```
+
+**`core/resilience/provider.py`**
+```python
+def get_ocr_adapter(module_id="paddleocr"):
+    return MODULE_MAPPING["ocr"][module_id]
+```
+
+### ✅ 5. **Main App Entry**
 
 **`main.py`**
 
@@ -226,3 +258,18 @@ curl -X POST "/api/v1/configurations" \
     ]
   }'
 ```
+
+---
+
+## ✅ MVP Implementation Summary (POC)
+
+The application now supports the resilient configuration architecture through a **Functional Mapping Layer**. This allows the app to retain its current efficient folder structure while providing the pluggable extensibility required by the resilience design.
+
+### Current Features
+- **Dynamic Module Registry**: Modules are automatically bootstrapped and registered in-memory at application startup.
+- **Compatibility Layer**: `core/resilience/` maps conceptual modules (e.g., `paddleocr`) directly to functional code (e.g., `ingestion/image_processor.py`).
+- **Zero-Restructuring Design**: Added the resilience feature without modifying the core functional layout of `brain/` or `ingestion/`.
+- **API Ready**: The internal `ModuleRegistry` is now populated with live references, ready for consumption by the Configuration APIs.
+
+### Proof of Concept (POC)
+This implementation proves that the system can switch between different backend implementations (like shifting from PaddleOCR to a future Cloud-based OCR) simply by updating a static mapping or a database entry, without touching the business logic layers.

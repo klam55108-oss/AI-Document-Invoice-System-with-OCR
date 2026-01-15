@@ -187,5 +187,6 @@ specs/*/temp/
 .obsidian/
 #.cursor/
 #.specify/
-/etc/
+/assets/
+/resources/
 /data/

@@ -376,25 +376,6 @@ async def process_invoice_file(
 
         return invoice
 
-
-async def apply_fallback_for_stage(
-    stage_id: str,
-    error: str,
-    service: Any,
-) -> str | None:
-    """Apply fallback module selection for a failed stage."""
-    fallback_module_id = await service.evaluate_fallback(stage_id=stage_id, error=error)
-    if fallback_module_id:
-        logger.warning(
-            "Fallback applied for stage failure",
-            stage_id=stage_id,
-            fallback_module_id=fallback_module_id,
-            error=error,
-        )
-    else:
-        logger.error("No fallback available for stage failure", stage_id=stage_id, error=error)
-    return fallback_module_id
-
     except Exception as e:
         # Fail-fast: Log error, mark job as failed, stop processing this file
         # But don't raise - allow caller to continue with other files
@@ -455,4 +436,23 @@ async def apply_fallback_for_stage(
         # Note: We don't raise here - this allows the caller to continue processing other files
         # The invoice is marked as failed and can be reviewed in the dashboard
         return invoice
+
+
+async def apply_fallback_for_stage(
+    stage_id: str,
+    error: str,
+    service: Any,
+) -> str | None:
+    """Apply fallback module selection for a failed stage."""
+    fallback_module_id = await service.evaluate_fallback(stage_id=stage_id, error=error)
+    if fallback_module_id:
+        logger.warning(
+            "Fallback applied for stage failure",
+            stage_id=stage_id,
+            fallback_module_id=fallback_module_id,
+            error=error,
+        )
+    else:
+        logger.error("No fallback available for stage failure", stage_id=stage_id, error=error)
+    return fallback_module_id
 
