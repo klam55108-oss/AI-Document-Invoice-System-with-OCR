@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     DEEPSEEK_MODEL: str = "deepseek-chat"
     DEEPSEEK_TEMPERATURE: float = 0.0
 
+    # OCR Settings
+    OCR_DEFAULT_PROVIDER: str = "paddleocr"
+    OCR_ENABLED_PROVIDERS: str = "paddleocr,deepseek-ocr"
+    OCR_TIMEOUT_SECONDS: float = 300.0
+    OCR_INCLUDE_KEY_FIELDS: bool = True
+    DEEPSEEK_OCR_MODEL: str = "deepseek-vl"
+    DEEPSEEK_OCR_BASE_URL: str = "https://api.deepseek.com/v1"
+
     # Chatbot Settings
     CHATBOT_RATE_LIMIT: int = 20  # queries per minute
     CHATBOT_SESSION_TIMEOUT: int = 1800  # 30 minutes in seconds

@@ -102,7 +102,9 @@ def main():
     init_db_connection()
 
     # Main content
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Invoice List", "Invoice Detail", "Upload Files", "Chatbot", "Quality Metrics"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        ["Invoice List", "Invoice Detail", "Upload Files", "Chatbot", "Quality Metrics", "OCR Compare"]
+    )
 
     # Sidebar filters
     with st.sidebar:
@@ -211,6 +213,12 @@ def main():
         except Exception as e:
             logger.error("Failed to render quality dashboard", error=str(e))
             st.error(f"Failed to load quality metrics: {str(e)}")
+
+    with tab6:
+        from interface.dashboard.components.ocr_compare import render_ocr_compare_tab
+        from core.config import settings
+        api_port = os.getenv("API_PORT", str(settings.API_PORT))
+        render_ocr_compare_tab(api_base_url=f"http://127.0.0.1:{api_port}")
 
 
 def display_invoice_list(

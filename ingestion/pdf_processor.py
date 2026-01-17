@@ -26,7 +26,7 @@ except ImportError:
     logger.warning("PyMuPDF (fitz) not available, OCR fallback for PDF will be disabled")
 
 
-async def process_pdf(file_path: Path) -> dict[str, Any]:
+async def process_pdf(file_path: Path, provider_id: str | None = None) -> dict[str, Any]:
     """Process PDF file and extract text.
 
     Args:
@@ -41,7 +41,7 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
     """
     if not DOCLING_AVAILABLE:
         logger.warning("Docling not available, using fallback PDF processing")
-        return await _process_pdf_fallback(file_path)
+        return await _process_pdf_fallback(file_path, provider_id=provider_id)
 
     try:
         logger.info("Processing PDF with Docling", path=str(file_path))
@@ -88,12 +88,12 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
 
     except Exception as e:
         logger.error("PDF processing failed with Docling, trying fallback", error=str(e))
-        return await _process_pdf_fallback(file_path)
+        return await _process_pdf_fallback(file_path, provider_id=provider_id)
 
     # If extracted text is very short, it might be an image PDF that Docling OCR missed or processed poorly
     if len(text_content.strip()) < 100:
         logger.warning("Docling extracted very little text, trying OCR fallback", path=str(file_path), text_length=len(text_content))
-        ocr_result = await _process_pdf_with_ocr(file_path)
+        ocr_result = await _process_pdf_with_ocr(file_path, provider_id=provider_id)
         if len(ocr_result.get("text", "")) > len(text_content):
             logger.info("OCR fallback provided more text, using it instead of Docling result")
             return ocr_result
@@ -111,7 +111,7 @@ async def process_pdf(file_path: Path) -> dict[str, Any]:
     }
 
 
-async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
+async def _process_pdf_fallback(file_path: Path, provider_id: str | None = None) -> dict[str, Any]:
     """Fallback PDF processing using pypdf.
 
     Args:
@@ -166,7 +166,7 @@ async def _process_pdf_fallback(file_path: Path) -> dict[str, Any]:
         )
         raise RuntimeError(f"PDF processing failed ({error_type}): {str(e)}") from e
 
-async def _process_pdf_with_ocr(file_path: Path) -> dict[str, Any]:
+async def _process_pdf_with_ocr(file_path: Path, provider_id: str | None = None) -> dict[str, Any]:
     """Process PDF by converting pages to images and running OCR.
 
     Args:
@@ -198,7 +198,7 @@ async def _process_pdf_with_ocr(file_path: Path) -> dict[str, Any]:
                 pix.save(str(temp_image_path))
 
                 # Run OCR on the page image
-                ocr_result = await process_image(temp_image_path)
+                ocr_result = await process_image(temp_image_path, provider_id=provider_id)
                 if ocr_result.get("text"):
                     full_text.append(f"--- PAGE {i+1} ---\n" + ocr_result["text"])
 
@@ -211,11 +211,16 @@ async def _process_pdf_with_ocr(file_path: Path) -> dict[str, Any]:
             "metadata": {
                 "file_path": str(file_path),
                 "file_size": file_path.stat().st_size,
-                "processor": "paddleocr_fallback",
+                "processor": "ocr_fallback",
             },
         }
 
     except Exception as e:
         logger.error("OCR fallback for PDF failed", path=str(file_path), error=str(e), exc_info=True)
         return {"text": "", "pages": 0, "metadata": {}}
+
+
+async def process_pdf_with_ocr(file_path: Path, provider_id: str | None = None) -> dict[str, Any]:
+    """Public OCR-only PDF processing helper."""
+    return await _process_pdf_with_ocr(file_path, provider_id=provider_id)
 

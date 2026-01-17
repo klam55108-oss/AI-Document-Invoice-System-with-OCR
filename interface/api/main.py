@@ -17,6 +17,7 @@ from interface.api.routes import (
     health,
     invoices,
     modules,
+    ocr,
     quality,
     stages,
     uploads,
@@ -122,6 +123,7 @@ app.include_router(chatbot.router, prefix="/api/v1")
 app.include_router(modules.router)
 app.include_router(stages.router)
 app.include_router(configurations.router)
+app.include_router(ocr.router)
 
 
 @app.get("/")

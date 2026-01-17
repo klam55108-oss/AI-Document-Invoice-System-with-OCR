@@ -35,6 +35,7 @@ async def process_invoice_handler(job: Job) -> None:
         category = payload.get("category")
         group = payload.get("group")
         invoice_job_id = payload.get("job_id")
+        ocr_provider = payload.get("ocr_provider")
         if invoice_job_id:
             invoice_job_id = uuid.UUID(invoice_job_id)
             
@@ -48,6 +49,7 @@ async def process_invoice_handler(job: Job) -> None:
                 category=category,
                 group=group,
                 job_id=invoice_job_id,
+                ocr_provider=ocr_provider,
             )
             await session.commit()
             logger.info("Invoice processing job completed", job_id=job.id, invoice_id=str(invoice.id), status=invoice.processing_status.value)

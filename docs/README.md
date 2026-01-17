@@ -1,0 +1,3 @@
+- [omniparser (GitHub)](https://github.com/omniscale/omniparser): Universal ETL engine for tabular data (CSV, Excel, JSON, XML, etc.) with streaming parsing and rich type-system.
+- [TRL (GitHub)](https://github.com/huggingface/trl): Library by Hugging Face for training and fine-tuning language models with reinforcement learning and supervised fine-tuning (SFT) techniques.
+- [Supervised Fine Tuning (SFT) (Docs)](https://huggingface.co/docs/trl/main/en/sft_trainer): Train language models using supervised learning techniques for efficient fine-tuning.

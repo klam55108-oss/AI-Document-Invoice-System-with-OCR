@@ -259,3 +259,55 @@ class ProcessingJob(Base):
         CheckConstraint("retry_count >= 0", name="check_retry_count_non_negative"),
     )
 
+
+class OcrResult(Base):
+    """OCR result record."""
+
+    __tablename__ = "ocr_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    input_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extracted_fields: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("idx_ocr_results_input", "input_id"),
+        Index("idx_ocr_results_provider", "provider_id"),
+        Index("idx_ocr_results_status", "status"),
+    )
+
+
+class OcrComparison(Base):
+    """OCR comparison record."""
+
+    __tablename__ = "ocr_comparisons"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    input_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    provider_a_result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ocr_results.id"), nullable=False
+    )
+    provider_b_result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ocr_results.id"), nullable=False
+    )
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("idx_ocr_comparisons_input", "input_id"),
+        Index("idx_ocr_comparisons_created", "created_at"),
+    )
+

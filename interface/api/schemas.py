@@ -34,6 +34,22 @@ class ProcessInvoiceRequest(BaseModel):
     job_id: str | None = Field(None, description="Batch/Job identifier (UUID)")
     force_reprocess: bool = Field(False, description="Force reprocessing even if file hash exists")
     background: bool = Field(False, description="Process in background via job queue")
+    ocr_provider: str | None = Field(None, description="OCR provider override (e.g. paddleocr, deepseek-ocr)")
+
+
+class OcrRunRequest(BaseModel):
+    """Request to run OCR for a single input."""
+
+    input_id: str = Field(..., description="Input identifier (file path within data/)")
+    provider_id: str | None = Field(None, description="OCR provider override")
+
+
+class OcrCompareRequest(BaseModel):
+    """Request to compare OCR providers for a single input."""
+
+    input_id: str = Field(..., description="Input identifier (file path within data/)")
+    provider_a_id: str = Field(..., description="First OCR provider id")
+    provider_b_id: str = Field(..., description="Second OCR provider id")
 
 
 # Response envelope schemas
@@ -168,6 +184,62 @@ class ConfigurationRollbackResponse(ApiResponse):
     """Response for configuration rollback endpoint."""
 
     data: ConfigRollbackResult
+
+
+class OcrProvider(BaseModel):
+    """OCR provider response."""
+
+    provider_id: str
+    name: str
+    is_enabled: bool
+    is_default: bool
+    status: str
+    supported_formats: list[str]
+
+
+class OcrProviderListResponse(ApiResponse):
+    """Response for OCR provider list."""
+
+    data: list[OcrProvider]
+
+
+class OcrResult(BaseModel):
+    """OCR result response."""
+
+    result_id: str
+    input_id: str
+    provider_id: str
+    extracted_text: str
+    extracted_fields: dict[str, Any]
+    status: str
+    error_message: str | None = None
+    duration_ms: int
+    created_at: datetime
+
+
+class OcrComparison(BaseModel):
+    """OCR comparison response."""
+
+    comparison_id: str
+    input_id: str
+    provider_a_result_id: str
+    provider_b_result_id: str
+    provider_a_result: OcrResult | None = None
+    provider_b_result: OcrResult | None = None
+    summary: str | None = None
+    created_at: datetime
+
+
+class OcrResultResponse(ApiResponse):
+    """Response for OCR run result."""
+
+    data: OcrResult
+
+
+class OcrComparisonResponse(ApiResponse):
+    """Response for OCR comparison."""
+
+    data: OcrComparison
 
 # Pagination schema
 class Pagination(BaseModel):

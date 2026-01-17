@@ -305,6 +305,7 @@ async def process_invoice(
                 "category": request.category,
                 "group": request.group,
                 "job_id": request.job_id,
+                "ocr_provider": request.ocr_provider,
             }
             # Enqueue returns job_id
             job_id = await queries.enqueue("process_invoice", json.dumps(payload).encode("utf-8"))
@@ -329,6 +330,7 @@ async def process_invoice(
             category=request.category,
             group=request.group,
             job_id=uuid.UUID(request.job_id) if request.job_id else None,
+            ocr_provider=request.ocr_provider,
         )
 
         await session.commit()

@@ -146,12 +146,21 @@ async def check_schema_health() -> dict[str, Any]:
     }
     
     # Expected tables from data model
-    expected_tables = ["invoices", "extracted_data", "validation_results", "processing_jobs"]
+    expected_tables = [
+        "invoices",
+        "extracted_data",
+        "validation_results",
+        "processing_jobs",
+        "ocr_results",
+        "ocr_comparisons",
+    ]
     expected_columns = {
         "invoices": ["id", "storage_path", "file_name", "file_hash", "processing_status", "created_at"],
         "extracted_data": ["id", "invoice_id", "vendor_name", "total_amount"],
         "validation_results": ["id", "invoice_id", "rule_name", "status"],
         "processing_jobs": ["id", "invoice_id", "job_type", "status"],
+        "ocr_results": ["id", "input_id", "provider_id", "status", "created_at"],
+        "ocr_comparisons": ["id", "input_id", "provider_a_result_id", "provider_b_result_id"],
     }
     
     try:

@@ -33,6 +33,7 @@ async def process_invoice_file(
     category: str | None = None,
     group: str | None = None,
     job_id: uuid.UUID | None = None,
+    ocr_provider: str | None = None,
 ) -> Invoice:
     """Process an invoice file end-to-end.
 
@@ -42,6 +43,7 @@ async def process_invoice_file(
         session: Database session
         force_reprocess: Force reprocessing even if file hash exists
         upload_metadata: Optional metadata about the upload (subfolder, group, category, etc.)
+        ocr_provider: Optional OCR provider override
 
     Returns:
         Invoice model instance
@@ -161,12 +163,12 @@ async def process_invoice_file(
             try:
                 stage_start = time.time()
                 if file_type == "pdf":
-                    processed_data = await process_pdf(file_path)
+                    processed_data = await process_pdf(file_path, provider_id=ocr_provider)
                 elif file_type in {"xlsx", "csv"}:
                     processed_data = await process_excel(file_path)
                 elif file_type in {"jpg", "png", "webp", "avif"}:
                     logger.info("Triggering image OCR", path=str(file_path), invoice_id=str(invoice.id), attempt=attempt)
-                    processed_data = await process_image(file_path)
+                    processed_data = await process_image(file_path, provider_id=ocr_provider)
                 else:
                     raise ValueError(f"Unsupported file type: {file_type}")
                 

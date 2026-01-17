@@ -1,15 +1,17 @@
-"""Image processing using PaddleOCR for text extraction."""
+"""Image processing using configurable OCR providers."""
 
 import asyncio
-import threading
+import base64
 import os
-import shutil
 import tempfile
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Any
 from PIL import Image
 
+from core.config import settings
 from core.logging import get_logger
+from core.ocr.configuration import resolve_provider
 
 logger = get_logger(__name__)
 
@@ -202,7 +204,25 @@ async def get_ocr_engine(lang: str = "ch"):
             _ocr_initializing = False
 
 
-async def process_image(file_path: Path) -> dict[str, Any]:
+async def process_image(file_path: Path, provider_id: str | None = None) -> dict[str, Any]:
+    """Process image file using selected OCR provider.
+
+    Args:
+        file_path: Path to image file
+        provider_id: Optional OCR provider override
+
+    Returns:
+        Dictionary with extracted text and metadata
+    """
+    resolved_provider = resolve_provider(provider_id)
+    if resolved_provider == "paddleocr":
+        return await _process_image_with_paddleocr(file_path)
+    if resolved_provider == "deepseek-ocr":
+        return await _process_image_with_deepseek(file_path)
+    raise ValueError(f"Unsupported OCR provider: {resolved_provider}")
+
+
+async def _process_image_with_paddleocr(file_path: Path) -> dict[str, Any]:
     """Process image file using PaddleOCR to extract text.
 
     Args:
@@ -306,14 +326,14 @@ async def process_image(file_path: Path) -> dict[str, Any]:
 
         if not result:
             logger.warning("OCR returned no results", path=str(file_path))
-            return {
-                "text": "",
-                "metadata": {
-                    "file_path": str(file_path),
-                    "processor": "paddleocr",
-                    "status": "no_text_found",
-                },
-            }
+        return {
+            "text": "",
+            "metadata": {
+                "file_path": str(file_path),
+                "processor": "paddleocr",
+                "status": "no_text_found",
+            },
+        }
 
         extracted_text = []
         confidences = []
@@ -383,7 +403,145 @@ async def process_image(file_path: Path) -> dict[str, Any]:
         raise RuntimeError(f"Image processing failed ({error_type}): {str(e)}") from e
     finally:
         # Cleanup temporary file if created
-        if 'is_temporary' in locals() and is_temporary and 'ocr_input_path' in locals() and os.path.exists(ocr_input_path):
+        if "is_temporary" in locals() and is_temporary and "ocr_input_path" in locals() and os.path.exists(ocr_input_path):
+            try:
+                os.unlink(ocr_input_path)
+                logger.debug("Cleaned up temporary OCR input file", path=ocr_input_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temporary OCR input file: {str(cleanup_error)}")
+
+
+def _build_image_data_url(file_path: Path) -> str:
+    mime_type, _ = guess_type(str(file_path))
+    if not mime_type:
+        mime_type = "application/octet-stream"
+    encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _run_deepseek_ocr_sync(image_path: Path) -> str:
+    import openai
+
+    api_key = settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY
+    if not api_key:
+        raise RuntimeError("DeepSeek OCR requires DEEPSEEK_API_KEY or OPENAI_API_KEY")
+
+    client = openai.OpenAI(
+        api_key=api_key,
+        base_url=settings.DEEPSEEK_OCR_BASE_URL,
+    )
+    prompt = (
+        "Extract all visible text from this image. "
+        "Return plain text only, preserving line breaks when possible."
+    )
+    response = client.chat.completions.create(
+        model=settings.DEEPSEEK_OCR_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": _build_image_data_url(image_path)}},
+                ],
+            }
+        ],
+        temperature=0.0,
+    )
+    return response.choices[0].message.content or ""
+
+
+async def _process_image_with_deepseek(file_path: Path) -> dict[str, Any]:
+    """Process image file using DeepSeek OCR (remote, CPU-only).
+
+    Args:
+        file_path: Path to image file
+
+    Returns:
+        Dictionary with extracted text and metadata
+    """
+    # Validate file exists before attempting OCR (saves resources)
+    if not file_path.exists():
+        error_msg = f"Image file not found: {file_path}"
+        logger.error("OCR processing failed - file not found", path=str(file_path), error=error_msg)
+        raise FileNotFoundError(error_msg)
+
+    # Check file size to avoid processing empty or corrupted files
+    try:
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            error_msg = f"Image file is empty: {file_path}"
+            logger.error("OCR processing failed - empty file", path=str(file_path), error=error_msg)
+            raise ValueError(error_msg)
+        if file_size > 25 * 1024 * 1024:  # 25MB limit for API payloads
+            error_msg = f"Image file too large: {file_size} bytes (max 25MB)"
+            logger.error("OCR processing failed - file too large", path=str(file_path), error=error_msg)
+            raise ValueError(error_msg)
+    except OSError as e:
+        error_msg = f"Cannot access image file: {file_path} - {str(e)}"
+        logger.error("OCR processing failed - file access error", path=str(file_path), error=error_msg)
+        raise OSError(error_msg) from e
+
+    logger.info("Starting DeepSeek OCR processing", path=str(file_path), file_size=file_size)
+
+    # Resize image to reduce memory pressure if it's large
+    ocr_input_path = resize_image_for_ocr(file_path)
+    is_temporary = ocr_input_path != str(file_path)
+
+    try:
+        loop = asyncio.get_event_loop()
+        ocr_timeout = settings.OCR_TIMEOUT_SECONDS
+        if file_size > 2 * 1024 * 1024:
+            ocr_timeout = max(ocr_timeout, (file_size / (1024 * 1024)) * 30)
+
+        async with _ocr_semaphore:
+            text = await asyncio.wait_for(
+                loop.run_in_executor(None, _run_deepseek_ocr_sync, Path(ocr_input_path)),
+                timeout=ocr_timeout,
+            )
+
+        if not text:
+            logger.warning("DeepSeek OCR returned no results", path=str(file_path))
+            return {
+                "text": "",
+                "metadata": {
+                    "file_path": str(file_path),
+                    "processor": "deepseek-ocr",
+                    "status": "no_text_found",
+                },
+            }
+
+        logger.info(
+            "DeepSeek OCR processing completed",
+            path=str(file_path),
+            text_length=len(text),
+        )
+
+        return {
+            "text": text,
+            "metadata": {
+                "file_path": str(file_path),
+                "file_size": file_path.stat().st_size,
+                "processor": "deepseek-ocr",
+                "was_resized": is_temporary,
+            },
+        }
+    except asyncio.TimeoutError:
+        error_msg = f"DeepSeek OCR timed out after {settings.OCR_TIMEOUT_SECONDS} seconds"
+        logger.error("DeepSeek OCR processing timeout", path=str(file_path), timeout=settings.OCR_TIMEOUT_SECONDS)
+        raise RuntimeError(error_msg) from None
+    except Exception as e:
+        error_type = type(e).__name__
+        error_msg = f"DeepSeek OCR processing failed: {str(e)}"
+        logger.error(
+            "DeepSeek OCR processing failed",
+            path=str(file_path),
+            error_type=error_type,
+            error=str(e),
+            exc_info=True,
+        )
+        raise RuntimeError(f"Image processing failed ({error_type}): {str(e)}") from e
+    finally:
+        if "is_temporary" in locals() and is_temporary and "ocr_input_path" in locals() and os.path.exists(ocr_input_path):
             try:
                 os.unlink(ocr_input_path)
                 logger.debug("Cleaned up temporary OCR input file", path=ocr_input_path)

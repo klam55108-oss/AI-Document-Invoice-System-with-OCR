@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: OCR Provider Switching API
+  version: 1.0.0
+paths:
+  /ocr/providers:
+    get:
+      summary: List OCR providers
+      responses:
+        "200":
+          description: Providers list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  default_provider_id:
+                    type: string
+                  providers:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OcrProvider"
+  /ocr/providers/default:
+    patch:
+      summary: Set default OCR provider (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider_id:
+                  type: string
+              required: [provider_id]
+      responses:
+        "200":
+          description: Default provider updated
+  /ocr/providers/enabled:
+    patch:
+      summary: Set enabled OCR providers (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider_ids:
+                  type: array
+                  items:
+                    type: string
+              required: [provider_ids]
+      responses:
+        "200":
+          description: Enabled providers updated
+  /ocr/run:
+    post:
+      summary: Run OCR for a single input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_id:
+                  type: string
+                provider_id:
+                  type: string
+              required: [input_id]
+      responses:
+        "202":
+          description: OCR job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrResult"
+  /ocr/compare:
+    post:
+      summary: Compare two OCR providers for a single input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_id:
+                  type: string
+                provider_a_id:
+                  type: string
+                provider_b_id:
+                  type: string
+              required: [input_id, provider_a_id, provider_b_id]
+      responses:
+        "202":
+          description: Comparison job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrComparison"
+  /ocr/results/{result_id}:
+    get:
+      summary: Get OCR result by id
+      parameters:
+        - in: path
+          name: result_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OCR result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrResult"
+  /ocr/comparisons/{comparison_id}:
+    get:
+      summary: Get OCR comparison by id
+      parameters:
+        - in: path
+          name: comparison_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OCR comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrComparison"
+components:
+  schemas:
+    OcrProvider:
+      type: object
+      properties:
+        provider_id:
+          type: string
+        name:
+          type: string
+        is_enabled:
+          type: boolean
+        is_default:
+          type: boolean
+        status:
+          type: string
+        supported_formats:
+          type: array
+          items:
+            type: string
+    OcrResult:
+      type: object
+      properties:
+        result_id:
+          type: string
+        input_id:
+          type: string
+        provider_id:
+          type: string
+        extracted_text:
+          type: string
+        extracted_fields:
+          type: object
+        status:
+          type: string
+        error_message:
+          type: string
+        duration_ms:
+          type: integer
+    OcrComparison:
+      type: object
+      properties:
+        comparison_id:
+          type: string
+        input_id:
+          type: string
+        provider_a_result_id:
+          type: string
+        provider_b_result_id:
+          type: string
+        summary:
+          type: string
