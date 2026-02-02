@@ -24,21 +24,32 @@ class ChatbotEngine:
         self.session = session
         self.vector_retriever = VectorRetriever(session=session)
         self.query_handler = QueryHandler()
+        self.llm_provider = self._resolve_llm_provider()
+        self.llm_client = None
+        self.llm_model = None
 
-        # Initialize DeepSeek client
-        # Note: Using OpenAI-compatible client for DeepSeek
-        try:
-            from openai import AsyncOpenAI
+        if self.llm_provider == "gemini":
+            try:
+                from google import genai
 
-            self.llm_client = AsyncOpenAI(
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url="https://api.deepseek.com/v1",  # DeepSeek API endpoint
-            )
-            self.llm_model = settings.DEEPSEEK_MODEL
-        except ImportError:
-            logger.warning("OpenAI client not available, LLM features disabled")
-            self.llm_client = None
-            self.llm_model = None
+                self.llm_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                self.llm_model = self._resolve_gemini_model()
+            except ImportError:
+                logger.warning("Google GenAI client not available, LLM features disabled")
+        elif self.llm_provider == "deepseek":
+            # Initialize DeepSeek client using OpenAI-compatible client
+            try:
+                from openai import AsyncOpenAI
+
+                self.llm_client = AsyncOpenAI(
+                    api_key=settings.DEEPSEEK_API_KEY,
+                    base_url="https://api.deepseek.com/v1",  # DeepSeek API endpoint
+                )
+                self.llm_model = settings.DEEPSEEK_MODEL
+            except ImportError:
+                logger.warning("OpenAI client not available, LLM features disabled")
+        else:
+            logger.warning("No LLM provider configured, LLM features disabled")
 
     async def process_message(
         self,
@@ -511,7 +522,17 @@ class ChatbotEngine:
             # Build user prompt with invoice data
             user_prompt = self._build_user_prompt(enhanced_message, invoices_data, intent)
 
-            # Call LLM with full conversation context
+            if self.llm_provider == "gemini":
+                gemini_response = await self._generate_gemini_response(
+                    system_prompt=system_prompt,
+                    context_messages=context_messages,
+                    user_prompt=user_prompt,
+                )
+                if gemini_response:
+                    return gemini_response
+                return self._generate_simple_response(intent, invoices_data)
+
+            # Call LLM with full conversation context (DeepSeek via OpenAI client)
             messages = [
                 {"role": "system", "content": system_prompt},
             ]
@@ -804,3 +825,62 @@ class ChatbotEngine:
         messages = error_messages.get(error_type, error_messages["generic"])
         return messages.get(language, messages["en"])
 
+    def _resolve_llm_provider(self) -> str:
+        """Resolve LLM provider based on model name and available keys."""
+        model_name = settings.LLM_MODEL.lower() if settings.LLM_MODEL else ""
+        if "gemini" in model_name:
+            return "gemini"
+        if "deepseek" in model_name or settings.DEEPSEEK_API_KEY:
+            return "deepseek"
+        if settings.OPENAI_API_KEY:
+            return "openai"
+        if settings.GEMINI_API_KEY:
+            return "gemini"
+        return "none"
+
+    def _resolve_gemini_model(self) -> str:
+        """Resolve Gemini model name from settings."""
+        if settings.LLM_MODEL and "gemini" in settings.LLM_MODEL.lower():
+            return settings.LLM_MODEL
+        return settings.GEMINI_MODEL
+
+    async def _generate_gemini_response(
+        self,
+        system_prompt: str,
+        context_messages: list[dict],
+        user_prompt: str,
+    ) -> str:
+        """Generate response using Gemini via google-genai."""
+        try:
+            from google.genai import types
+
+            contents = []
+            for msg in context_messages:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append(
+                    types.Content(
+                        role=role,
+                        parts=[types.Part.from_text(text=msg["content"])],
+                    )
+                )
+
+            contents.append(
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=user_prompt)],
+                )
+            )
+
+            response = self.llm_client.models.generate_content(
+                model=self.llm_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=settings.GEMINI_TEMPERATURE,
+                ),
+            )
+
+            return response.text or ""
+        except Exception as e:
+            logger.error("Gemini response generation failed", error=str(e))
+            return ""

@@ -17,6 +17,27 @@ from core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _resolve_llm_provider() -> str:
+    """Resolve LLM provider based on model name and available keys."""
+    model_name = settings.LLM_MODEL.lower() if settings.LLM_MODEL else ""
+    if "gemini" in model_name:
+        return "gemini"
+    if "deepseek" in model_name or settings.DEEPSEEK_API_KEY:
+        return "deepseek"
+    if settings.OPENAI_API_KEY:
+        return "openai"
+    if settings.GEMINI_API_KEY:
+        return "gemini"
+    return "none"
+
+
+def _resolve_gemini_model() -> str:
+    """Resolve Gemini model name from settings."""
+    if settings.LLM_MODEL and "gemini" in settings.LLM_MODEL.lower():
+        return settings.LLM_MODEL
+    return settings.GEMINI_MODEL
+
+
 async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = None) -> ExtractedDataSchema:
     """Extract structured invoice data from raw text using direct LLM extraction.
 
@@ -34,19 +55,8 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
         return ExtractedDataSchema(raw_text=raw_text, extraction_confidence=0.0)
 
     try:
-        # Initialize direct OpenAI client for better compatibility with DeepSeek
-        import openai
         import json
-        
-        if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
-            logger.info("Using DeepSeek via direct OpenAI client", model=settings.LLM_MODEL)
-            client = openai.OpenAI(
-                api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
-                base_url="https://api.deepseek.com/v1"
-            )
-        else:
-            logger.info("Using OpenAI via direct client", model=settings.LLM_MODEL)
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+        llm_provider = _resolve_llm_provider()
 
         # Prompt for extraction - Modified for JSON output
         system_prompt = (
@@ -85,17 +95,48 @@ async def extract_invoice_data(raw_text: str, metadata: dict[str, Any] | None = 
             user_content += f"\nADDITIONAL METADATA HINTS:\nFilename: {file_name}\n"
             user_content += f"\nHint: If vendor_name is not clear in raw text, use the filename '{file_name}' (strip extension and numbers) as a fallback for vendor_name.\n"
 
-        # Execute extraction using standard chat completion
-        response = client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=settings.LLM_TEMPERATURE,
-        )
+        if llm_provider == "gemini":
+            from google import genai
+            from google.genai import types
 
-        content = response.choices[0].message.content
+            logger.info("Using Gemini via google-genai client", model=_resolve_gemini_model())
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=_resolve_gemini_model(),
+                contents=user_content,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=settings.GEMINI_TEMPERATURE,
+                    response_mime_type="application/json",
+                ),
+            )
+            content = response.text
+        else:
+            # Initialize direct OpenAI client for better compatibility with DeepSeek
+            import openai
+
+            if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
+                logger.info("Using DeepSeek via direct OpenAI client", model=settings.LLM_MODEL)
+                client = openai.OpenAI(
+                    api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
+                    base_url="https://api.deepseek.com/v1",
+                )
+            else:
+                logger.info("Using OpenAI via direct client", model=settings.LLM_MODEL)
+                client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            # Execute extraction using standard chat completion
+            response = client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=settings.LLM_TEMPERATURE,
+            )
+
+            content = response.choices[0].message.content
+
         if not content:
             raise ValueError("LLM returned empty content")
 
@@ -158,16 +199,8 @@ async def refine_extraction(
     logger.info("Refining extraction based on validation errors", error_count=len(validation_errors))
 
     try:
-        import openai
         import json
-        
-        if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
-            client = openai.OpenAI(
-                api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
-                base_url="https://api.deepseek.com/v1"
-            )
-        else:
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+        llm_provider = _resolve_llm_provider()
 
         system_prompt = (
             "You are an expert invoice processing agent. A previous extraction attempt failed some validation checks.\n"
@@ -184,16 +217,42 @@ async def refine_extraction(
             f"RAW TEXT FROM DOCUMENT:\n---------------------\n{raw_text}\n---------------------\n"
         )
 
-        response = client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            temperature=0.1,  # Lower temperature for refinement
-        )
+        if llm_provider == "gemini":
+            from google import genai
+            from google.genai import types
 
-        content = response.choices[0].message.content
+            client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=_resolve_gemini_model(),
+                contents=user_content,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=settings.GEMINI_TEMPERATURE,
+                    response_mime_type="application/json",
+                ),
+            )
+            content = response.text
+        else:
+            import openai
+
+            if "deepseek" in settings.LLM_MODEL.lower() or settings.DEEPSEEK_API_KEY:
+                client = openai.OpenAI(
+                    api_key=settings.DEEPSEEK_API_KEY or settings.OPENAI_API_KEY,
+                    base_url="https://api.deepseek.com/v1",
+                )
+            else:
+                client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            response = client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0.1,  # Lower temperature for refinement
+            )
+
+            content = response.choices[0].message.content
         if not content:
             return previous_data
 

@@ -96,7 +96,6 @@ role: "user" -> Dynamic User Prompt (retrieved data + current question)
 
 ## TODO
 
-- snowflake
-- Vanna.ai/LangChain SQL Agent
-- vLLM
-- Langragh
+### Snowflake
+
+`Snowflake Inc.` is a cloud‑based data platform that provides data warehousing, data lakes, data engineering, and data sharing as a managed service across AWS, Azure, and Google Cloud.

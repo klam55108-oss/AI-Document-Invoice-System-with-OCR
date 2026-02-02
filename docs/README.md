@@ -1,6 +1,41 @@
-- [omniparser (GitHub)](https://github.com/omniscale/omniparser): Universal ETL engine for tabular data (CSV, Excel, JSON, XML, etc.) with streaming parsing and rich type-system.
-- [TRL (GitHub)](https://github.com/huggingface/trl): Library by Hugging Face for training and fine-tuning language models with reinforcement learning and supervised fine-tuning (SFT) techniques.
-- [Supervised Fine Tuning (SFT) (Docs)](https://huggingface.co/docs/trl/main/en/sft_trainer): Train language models using supervised learning techniques for efficient fine-tuning.
+# Documentation Index
+
+Reference for the current AI E-Invoicing implementation: dashboard, API, ingestion, and configuration.
+
+## Implementation summaries
+
+| Doc | Description |
+|-----|-------------|
+| [Technical Stack & Architecture](./tech-stack.md) | Stack by layer (frontend, API, processing, intelligence, data), alternatives, and processing logic |
+| [Setup & Scaffold](./setup-scaffold-1.md) | Step-by-step setup and scaffold guide |
+| [Dashboard Improvements](./002-dashboard-improvements.md) | Analytics, export to CSV/PDF, filters, bulk reprocess, status/vendor/financial charts |
+| [Dataset Upload UI](./003-dataset-upload-ui-implementation.md) | Web upload (PDF, Excel, images), processing flow, and upload API |
+| [Invoice Chatbot](./004-invoice-chatbot-implementation.md) | RAG chatbot: sessions, rate limiting, vector retriever, DeepSeek, dashboard tab |
+| [Ingestion Workflow Fixes](./005-ingestion-workflow-fixes.md) | Ingestion pipeline fixes and behavior |
+| [Duplicate Processing Logic](./duplicate-processing-logic.md) | File hashing, versioning, and duplicate handling |
+| [Resilient Configuration](./resilient-configuration.md) | Module plugability, runtime configuration APIs, workflow diagram |
+| [OCR Implementation](./ocr-implementation.md) | OCR providers, configuration, and compare flow |
+| [OCR Switch Options](./ocr-switch-options.md) | Switching and configuring OCR providers |
+| [CSV Implementation](./csv-implementation.md) | CSV ingestion and processing |
+| [PDF Implementation](./pdf-implementation.md) | PDF processing (Docling/PyPDF) |
+| [Process Images](./process-images-3.md) | Image processing and pipeline |
+
+## API surface (current)
+
+- **Health**: `GET /api/v1/health`
+- **Invoices**: process, list, detail, analytics (status-distribution, time-series, vendor-analysis, financial-summary)
+- **Uploads**: upload files, list, status
+- **Chatbot**: `POST /api/v1/chatbot/chat`, session management
+- **Quality**: extraction quality and confidence metrics
+- **Configurations**: module/stage configuration, activation, rollback
+- **OCR**: providers, compare, run
+- **Modules / Stages**: configuration metadata
+
+## Dashboard tabs (Streamlit)
+
+Invoice List (filters, bulk actions, export) → Invoice Detail (preview, extracted data, validation analysis) → Upload Files → Chatbot → Quality Metrics → OCR Compare.
+
+---
 
 # Analysis of AI-EInvoicing RAG & Autonomy Stack
 
@@ -93,3 +128,9 @@ While the stack is solid, here are 3 targeted improvements:
 You are **not** missing out by excluding LangChain or TRL. You have chosen a **focused, high-performance stack** (LlamaIndex) that is perfectly suited for your problem domain.
 
 **Recommendation**: Stay the course. Focus on **Hybrid Search** and **Evaluation** rather than adding training complexity.
+
+## External references
+
+- [omniparser (GitHub)](https://github.com/omniscale/omniparser): Universal ETL engine for tabular data (CSV, Excel, JSON, XML, etc.) with streaming parsing and rich type-system.
+- [TRL (GitHub)](https://github.com/huggingface/trl): Library by Hugging Face for training and fine-tuning language models with reinforcement learning and supervised fine-tuning (SFT) techniques.
+- [Supervised Fine Tuning (SFT) (Docs)](https://huggingface.co/docs/trl/main/en/sft_trainer): Train language models using supervised learning techniques for efficient fine-tuning.

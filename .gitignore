@@ -187,6 +187,5 @@ specs/*/temp/
 .obsidian/
 #.cursor/
 #.specify/
-/assets/
 /resources/
 /data/

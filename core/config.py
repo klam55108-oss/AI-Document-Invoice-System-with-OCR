@@ -1,7 +1,10 @@
 """Configuration management using Pydantic Settings."""
 
 import os
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -38,6 +41,11 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str | None = None
     DEEPSEEK_MODEL: str = "deepseek-chat"
     DEEPSEEK_TEMPERATURE: float = 0.0
+
+    # Gemini Settings
+    GEMINI_API_KEY: str | None = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_TEMPERATURE: float = 0.0
 
     # OCR Settings
     OCR_DEFAULT_PROVIDER: str = "paddleocr"

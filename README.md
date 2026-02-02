@@ -4,6 +4,26 @@ An **AI-native financial automation platform** for processing heterogeneous invo
 
 ---
 
+## 📸 Implementation at a Glance
+
+| Overview | Invoice List & Bulk Actions |
+|----------|-----------------------------|
+| ![E-Invoice Review Dashboard – overview, filters, and status distribution](assets/1.png) | ![Invoice list table, export, and bulk reprocess](assets/2.png) |
+
+| Invoice Detail & Extracted Data | Validation Analysis |
+|----------------------------------|---------------------|
+| ![Single invoice view with file preview and extracted fields](assets/3.png) | ![Validation rules: passed, failed, and warnings](assets/4.png) |
+
+| Upload Files | Chat with Invoices |
+|--------------|--------------------|
+| ![Drag-and-drop upload for PDF, Excel, and images](assets/5.png) | ![Natural-language chatbot over invoice data](assets/6.png) |
+
+| Quality Metrics | Financial Summary |
+|-----------------|-------------------|
+| ![Extraction quality, confidence, and format distribution](assets/7.png) | ![Total amount, tax breakdown, and currency distribution](assets/8.png) |
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
@@ -74,8 +94,11 @@ curl -X POST "http://localhost:8000/api/v1/invoices/process" \
 ---
 
 ## 📚 Documentation
-- **[Technical Stack & Architecture](./docs/tech-stack.md)**: Detailed breakdown, alternatives, and processing logic.
-- **[Setup & Scaffold](./docs/setup-scaffold-1.md)**: Step-by-step implementation guide.
-- **[Duplicate Processing Logic](./docs/duplicate-processing-logic.md)**: How hashing and versioning works.
-- **[Multi-Agent Architecture](./docs/multi-agents-2.md)**: Advanced RAG and agent patterns.
-- **[Resilient Configuration](./docs/resilient-configuration.md)**: Module plugability, runtime configuration APIs, and workflow diagram.
+- **[Technical Stack & Architecture](./docs/tech-stack.md)** — Stack by layer, alternatives, and processing logic.
+- **[Setup & Scaffold](./docs/setup-scaffold-1.md)** — Step-by-step implementation guide.
+- **[Dashboard Improvements](./docs/002-dashboard-improvements.md)** — Analytics, export, filters, and bulk actions.
+- **[Dataset Upload UI](./docs/003-dataset-upload-ui-implementation.md)** — Web upload and processing flow.
+- **[Invoice Chatbot](./docs/004-invoice-chatbot-implementation.md)** — RAG-backed chat over invoice data.
+- **[Duplicate Processing Logic](./docs/duplicate-processing-logic.md)** — Hashing and versioning.
+- **[Resilient Configuration](./docs/resilient-configuration.md)** — Module plugability and runtime configuration APIs.
+- **[Docs Index](./docs/README.md)** — Full documentation index and RAG stack analysis.
