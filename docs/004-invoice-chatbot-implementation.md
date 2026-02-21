@@ -3,11 +3,14 @@
 **Feature Branch**: `004-invoice-chatbot`  
 **Implementation Date**: December 2024  
 **Status**: MVP Complete (User Story 1)  
-**Specification**: `/specs/004-invoice-chatbot/`
+**Specification**: `/specs/004-invoice-chatbot/`  
+**Related**: [Query Strategy Analysis](./query-strategy-analysis.md) - Cascade vs Parallel Hybrid Search
 
 ## Overview
 
 A conversational chatbot interface integrated into the Streamlit dashboard that allows users to query trained invoice data using natural language. The chatbot uses DeepSeek Chat model for language understanding and generation, a free embedding model (`sentence-transformers`) for vector similarity search, and leverages existing pgvector storage for retrieval-augmented generation (RAG).
+
+**Current Query Strategy**: Cascading fallback (Vector → SQL). See [Query Strategy Analysis](./query-strategy-analysis.md) for production upgrade path to parallel hybrid search.
 
 ## Implementation Status
 
@@ -112,17 +115,20 @@ interface/dashboard/components/
 The core orchestrator that:
 
 - Processes user messages and generates responses
-- Retrieves invoices using vector search (pgvector) with database fallback
+- Retrieves invoices using **cascading fallback strategy**: vector search (pgvector) with SQL text search fallback
 - Handles general questions directly without database queries
 - Generates natural language responses using DeepSeek Chat
 - Maintains conversation context (last 10 messages)
 
 **Key Methods**:
 - `process_message()` - Main entry point for processing queries
-- `_retrieve_invoices()` - Vector search with database fallback
-- `_query_invoices_from_db()` - Text-based search on file names and extracted data
+- `_retrieve_invoices()` - Cascading retrieval: vector search first, SQL fallback if empty
+- `_query_invoices_from_db()` - SQL text-based search on file names, vendor names, invoice numbers
+- `_query_invoices_with_filters()` - SQL aggregate queries with date/vendor filters
 - `_get_invoices_data()` - Retrieves detailed invoice and extracted data
 - `_generate_response()` - LLM response generation
+
+**Query Strategy Details**: See [Query Strategy Analysis](./query-strategy-analysis.md) for comprehensive cascade vs parallel hybrid comparison.
 
 #### SessionManager (`brain/chatbot/session_manager.py`)
 

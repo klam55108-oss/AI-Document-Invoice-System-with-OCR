@@ -10,10 +10,12 @@
 graph TB
     subgraph "Frontend Layer"
         UI[Streamlit Dashboard]
+        Chat[Chatbot Tab]
     end
     
     subgraph "API Layer"
         API[FastAPI]
+        ChatAPI[Chatbot API]
         Auth[FastAPI Users + JWT]
     end
     
@@ -25,19 +27,23 @@ graph TB
     end
     
     subgraph "Intelligence Layer"
-        LLM[LLM Layer<br/>DeepSeek/OpenAI]
+        LLM[LLM Layer<br/>DeepSeek/OpenAI/Gemini]
         RAG[RAG Framework<br/>LlamaIndex]
+        ChatEngine[Chatbot Engine<br/>Cascade Query Strategy]
         Valid[Validator<br/>Pydantic]
     end
     
     subgraph "Data Layer"
         PG[(PostgreSQL)]
-        Vec[(pgvector)]
+        Vec[(pgvector<br/>Vector Search)]
+        FTS[(PostgreSQL<br/>Full-Text Search)]
         Queue[(pgqueuer)]
         Minio[MinIO S3]
     end
     
     UI --> API
+    Chat --> ChatAPI
+    ChatAPI --> ChatEngine
     API --> Orch
     Orch --> PDF
     Orch --> IMG
@@ -47,6 +53,8 @@ graph TB
     XLS --> LLM
     LLM --> Valid
     LLM --> RAG
+    ChatEngine --> Vec
+    ChatEngine --> FTS
     RAG --> Vec
     Valid --> PG
     Orch --> Queue
@@ -91,11 +99,13 @@ graph TB
 
 | Component | Current Choice | Version | Purpose |
 |-----------|---------------|---------|---------|
-| **LLM (Primary)** | DeepSeek-V3 | 1.0.0+ | Cost-effective structured extraction |
-| **LLM (Fallback)** | OpenAI GPT-4o | 1.50.0+ | High-accuracy extraction |
-| **RAG Framework** | LlamaIndex | 0.11.0+ | Document indexing, retrieval |
-| **Embeddings** | sentence-transformers | 2.2.0+ | Semantic search, vector embeddings |
+| **LLM (Primary)** | DeepSeek-V3 / DeepSeek-Chat | API | Cost-effective structured extraction, chatbot responses |
+| **LLM (Fallback)** | OpenAI GPT-4o / Gemini | API | High-accuracy extraction |
+| **RAG Framework** | LlamaIndex | 0.11.0+ | Document indexing, retrieval, agentic workflows |
+| **Embeddings** | sentence-transformers | 2.2.0+ | Semantic search, vector embeddings (all-MiniLM-L6-v2) |
 | **Orchestration** | AsyncIO (native) | Python 3.12 | Parallel processing, non-blocking I/O |
+| **Chatbot Engine** | Custom (brain/chatbot/) | - | Session management, rate limiting, hybrid retrieval |
+| **Query Strategy** | Cascade Fallback | - | Vector search → SQL text search (see [Query Strategy Analysis](./query-strategy-analysis.md)) |
 
 ### 5. Data / Persistence Layer
 
@@ -194,11 +204,16 @@ graph TB
 
 | Technology | Pros | Cons | Current Usage |
 |------------|------|------|---------------|
-| **🟢 PostgreSQL + pgvector** (Current) | • All-in-one solution<br/>• ACID guarantees<br/>• Mature ecosystem<br/>• Cost-effective | • Vector search slower than specialized DBs<br/>• Manual tuning needed | ✅ "Complexity Collapse" strategy |
+| **🟢 PostgreSQL + pgvector** (Current) | • All-in-one solution<br/>• ACID guarantees<br/>• Mature ecosystem<br/>• Cost-effective<br/>• Supports both vector and full-text search | • Vector search slower than specialized DBs<br/>• Manual tuning needed | ✅ "Complexity Collapse" strategy<br/>✅ Chatbot uses cascade: vector → SQL fallback |
 | **Pinecone** | • Purpose-built vectors<br/>• Managed service<br/>• Fast similarity search | • **$70/month minimum**<br/>• Vendor lock-in | ❌ Unnecessary with pgvector |
-| **Weaviate** | • Open-source vector DB<br/>• Hybrid search<br/>• Self-hostable | • Additional infrastructure<br/>• Overkill for our scale | ⚠️ Consider if vector search becomes bottleneck |
+| **Weaviate** | • Open-source vector DB<br/>• Hybrid search built-in<br/>• Self-hostable | • Additional infrastructure<br/>• Overkill for our scale | ⚠️ Consider for parallel hybrid upgrade (see [Query Strategy](./query-strategy-analysis.md)) |
 | **Qdrant** | • Rust-based speed<br/>• Filtering support<br/>• Good docs | • Another service to manage | ⚠️ Alternative to Weaviate |
 | **Chroma** | • Lightweight<br/>• Embedded mode<br/>• Developer-friendly | • Less production-ready<br/>• Limited scale | ⚠️ Good for prototyping |
+
+**Query Strategy Details**: 
+- Current: Cascading fallback (vector search → SQL text search)
+- Planned: Parallel hybrid search with Reciprocal Rank Fusion (RRF)
+- See comprehensive analysis: [Query Strategy Analysis](./query-strategy-analysis.md)
 
 ### Object Storage Alternatives
 

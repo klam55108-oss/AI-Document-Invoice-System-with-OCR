@@ -11,6 +11,7 @@ Reference for the current AI E-Invoicing implementation: dashboard, API, ingesti
 | [Dashboard Improvements](./002-dashboard-improvements.md) | Analytics, export to CSV/PDF, filters, bulk reprocess, status/vendor/financial charts |
 | [Dataset Upload UI](./003-dataset-upload-ui-implementation.md) | Web upload (PDF, Excel, images), processing flow, and upload API |
 | [Invoice Chatbot](./004-invoice-chatbot-implementation.md) | RAG chatbot: sessions, rate limiting, vector retriever, DeepSeek, dashboard tab |
+| [Query Strategy Analysis](./query-strategy-analysis.md) | **Cascade vs Parallel Hybrid Search**: comprehensive analysis, performance comparison, production upgrade path |
 | [Ingestion Workflow Fixes](./005-ingestion-workflow-fixes.md) | Ingestion pipeline fixes and behavior |
 | [Duplicate Processing Logic](./duplicate-processing-logic.md) | File hashing, versioning, and duplicate handling |
 | [Resilient Configuration](./resilient-configuration.md) | Module plugability, runtime configuration APIs, workflow diagram |
@@ -39,12 +40,18 @@ Invoice List (filters, bulk actions, export) → Invoice Detail (preview, extrac
 
 # Analysis of AI-EInvoicing RAG & Autonomy Stack
 
+**Related Documents**:
+- [Query Strategy Analysis](./query-strategy-analysis.md) - Comprehensive cascade vs parallel hybrid search analysis
+- [Invoice Chatbot Implementation](./004-invoice-chatbot-implementation.md) - Current chatbot implementation details
+
 ## 1. Executive Summary
 
 **Is the implementation reasonable?**
 **Yes, highly reasonable.** The current architecture leverages a "Complexity Collapse" strategy by using powerful inference-only models (DeepSeek-V3/GPT-4o) combined with **LlamaIndex** for RAG and **pgvector** for storage.
 
 Your confusion likely stems from the fact that **SFT (Supervised Fine-Tuning)** and **TRL (Transformer Reinforcement Learning)** are **NOT** currently used in this project, nor are they typically required for this stage of an invoice extraction application.
+
+**Query Strategy Update**: The chatbot currently uses a **cascading fallback** approach (vector → SQL) that is sufficient for MVP but should be upgraded to **parallel hybrid search** before production. See [Query Strategy Analysis](./query-strategy-analysis.md) for details.
 
 ## 2. Technology Breakdown & Clarification
 
@@ -92,16 +99,22 @@ The project uses **LlamaIndex Agents** (ReAct pattern) which can:
 
 While the stack is solid, here are 3 targeted improvements:
 
-### 1. Hybrid Search (Keyword + Vector)
+### 1. Hybrid Search (Keyword + Vector) - **HIGH PRIORITY**
 
-**Current**: Relies heavily on Vector Search (`pgvector`).
-**Problem**: Vector search sometimes misses exact keyword matches (e.g., specific Invoice ID "INV-9928").
-**Suggestion**: Implement **Hybrid Search**.
+**Current**: Chatbot uses cascading fallback strategy (vector search → SQL text search when vector returns empty).  
+**Problem**: Vector search might return results but miss exact keyword matches (e.g., specific Invoice ID "INV-9928"), preventing SQL fallback from triggering.  
+**Suggestion**: Implement **Parallel Hybrid Search** with Reciprocal Rank Fusion (RRF).
 
-* Use `pgvector` for semantic meaning ("find huge software bills").
-* Use PostgreSQL `tsvector` (Full Text Search) for exact keywords ("INV-9928").
-* Combine results using Reciprocal Rank Fusion (RRF).
-* *Note: You have a skill available for this: `pgvector-search`.*
+* Execute `pgvector` (semantic) and PostgreSQL `tsvector` (keyword) **in parallel**
+* Combine results using RRF algorithm
+* Exact matches get highest scores automatically
+* **Implementation time**: ~3 days
+* **See detailed analysis**: [Query Strategy Analysis](./query-strategy-analysis.md)
+
+**Status**: 
+- ✅ Cascade implementation complete (MVP-ready)
+- 📋 Parallel hybrid documented and architected
+- 🔴 **Recommended before production** for financial data reliability
 
 ### 2. Evaluation Pipeline (The Missing Piece)
 
