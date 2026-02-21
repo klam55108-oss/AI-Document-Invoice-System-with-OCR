@@ -11,9 +11,11 @@ class LineItem(BaseModel):
     """Line item in an invoice."""
 
     description: str | None = Field(None, description="Item description")
-    quantity: float | None = Field(None, ge=0, description="Quantity")
+    quantity: Decimal | None = Field(None, ge=0, description="Quantity")
     unit_price: Decimal | None = Field(None, ge=0, description="Unit price")
     amount: Decimal | None = Field(None, ge=0, description="Line item amount")
+    tax_rate: Decimal | None = Field(None, ge=0, description="Tax rate for this item")
+    line_order: int | None = Field(None, description="Order of appearance")
 
 
 class ExtractedDataSchema(BaseModel):
@@ -112,6 +114,29 @@ class ExtractedDataSchema(BaseModel):
             }
         }
     )
+
+
+class CanonicalInvoiceSchema(BaseModel):
+    """Normalized schema all adapters must output for ingestion."""
+
+    source_dataset: str          # "voxel51" | "mychen76" | "gokulraja"
+    source_id: str               # Original ID in that dataset
+    image_path: str              # Local path to image
+    file_name: str
+    invoice_number: str | None = None
+    invoice_date: date | None = None
+    vendor_name: str | None = None
+    vendor_address: str | None = None
+    bill_to: str | None = None
+    line_items: list[LineItem] = Field(default_factory=list)
+    subtotal: Decimal | None = None
+    tax_amount: Decimal | None = None
+    total_amount: Decimal | None = None
+    currency: str = "USD"
+    raw_ocr_text: str | None = None
+    annotation_confidence: Decimal = Field(Decimal("1.0"), ge=0, le=1)
+    image_hash: str = ""         # For deduplication
+    is_training_data: bool = True
 
 
 class ValidationRuleResult(BaseModel):

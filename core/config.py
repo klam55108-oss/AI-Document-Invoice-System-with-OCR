@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     # LLM Settings
     OPENAI_API_KEY: str | None = None
     LLM_MODEL: str = "deepseek-chat"
-    EMBED_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBED_MODEL: str = "BAAI/bge-m3"
     LLM_TEMPERATURE: float = 0.0
 
     # DeepSeek Chat Settings

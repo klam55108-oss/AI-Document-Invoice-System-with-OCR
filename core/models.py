@@ -23,6 +23,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from core.database import Base
+from core.configuration_models import (  # noqa: F401
+    CapabilityContract,
+    ConfigurationChangeEvent,
+    FallbackPolicy,
+    Module,
+    ModuleConfiguration,
+    ModuleSelection,
+    ProcessingStage,
+)
 
 
 class ProcessingStatus(str, Enum):
@@ -99,6 +108,14 @@ class Invoice(Base):
     file_preview_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     processing_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # Multi-dataset Integration (added for HF datasets)
+    source_dataset: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    annotation_confidence: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True, default=1.0)
+    image_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    is_training_data: Mapped[bool] = mapped_column(CheckConstraint("is_training_data IS NOT NULL"), default=False)
+    raw_ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Relationships
     extracted_data: Mapped["ExtractedData | None"] = relationship(
         "ExtractedData", back_populates="invoice", uselist=False
@@ -108,6 +125,9 @@ class Invoice(Base):
     )
     processing_jobs: Mapped[list["ProcessingJob"]] = relationship(
         "ProcessingJob", back_populates="invoice", cascade="all, delete-orphan"
+    )
+    line_item_details: Mapped[list["InvoiceLineItem"]] = relationship(
+        "InvoiceLineItem", back_populates="invoice", cascade="all, delete-orphan"
     )
 
     # Indexes
@@ -311,3 +331,48 @@ class OcrComparison(Base):
         Index("idx_ocr_comparisons_created", "created_at"),
     )
 
+class InvoiceLineItem(Base):
+    """Structured line item detail record."""
+
+    __tablename__ = "invoice_line_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    total: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
+    tax_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+    line_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Relationships
+    invoice: Mapped["Invoice"] = relationship("Invoice", back_populates="line_item_details")
+
+
+class DatasetSource(Base):
+    """HuggingFace or other external dataset source registry."""
+
+    __tablename__ = "dataset_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    hf_repo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_synced: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    record_count: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TrainingRun(Base):
+    """ML training run tracking for model versioning."""
+
+    __tablename__ = "training_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    datasets_used: Mapped[list[str]] = mapped_column(JSONB, nullable=False)  # Stored as list of strings
+    model_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

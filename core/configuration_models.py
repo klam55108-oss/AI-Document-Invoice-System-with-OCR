@@ -92,7 +92,7 @@ class Module(Base):
         String(20), nullable=False, default=ModuleStatus.AVAILABLE
     )
     is_fallback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    module_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
