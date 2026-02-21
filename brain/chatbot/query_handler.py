@@ -113,31 +113,36 @@ class QueryHandler:
 
         # Extract vendor name (simple pattern matching)
         # Look for patterns like "from Acme", "vendor Acme", "Acme Corp", "by Acme"
+        # Also match vendor names with hyphens like "Moore-Miller"
         vendor_patterns = [
-            r"(?:from|vendor|by)\s+([A-Z][A-Za-z\s&]+?)(?:\s|$|,|\.)",
-            r"([A-Z][A-Za-z\s&]+?)\s+(?:corp|corporation|inc|llc|ltd|company)",
+            r"(?:from|vendor|by)\s+([A-Z][A-Za-z\s&-]+?)(?:\s|$|,|\.)",
+            r"([A-Z][A-Za-z\s&-]+?)\s+(?:corp|corporation|inc|llc|ltd|company)",
+            # Match capitalized names with hyphens (e.g., Moore-Miller)
+            r"\b([A-Z][a-z]+-[A-Z][a-z]+)\b",
         ]
         for pattern in vendor_patterns:
             match = re.search(pattern, query, re.IGNORECASE)
             if match:
                 vendor_name = match.group(1).strip()
                 # Filter out common false positives
-                if vendor_name.lower() not in ["the", "a", "an", "this", "that"]:
+                if vendor_name.lower() not in ["the", "a", "an", "this", "that", "invoice", "id"]:
                     params["vendor_name"] = vendor_name
                     break
 
         # Extract invoice number
         # Improved regex to avoid matching "ID" or random numbers in strings
-        # Look for patterns like "INV-2024-001", "invoice 123", but NOT "invoice id"
-        invoice_pattern = r"\b(?:invoice|inv)\b(?!\s+id)[\s#-]*([a-zA-Z0-9.-]+)"
+        # Look for patterns like "INV-2024-001", "invoice 123", but NOT "invoice id" or "invoice from"
+        invoice_pattern = r"\b(?:invoice|inv)\b(?!\s+(?:id|from))[\ s#-]*([a-zA-Z0-9.-]+)"
         match = re.search(invoice_pattern, query_lower, re.IGNORECASE)
         if match:
-            invoice_num = match.group(1).strip().upper()
-            # If it looks like a filename, keep it as is, otherwise uppercase it
-            if "." in invoice_num:
-                params["invoice_number"] = match.group(1).strip()
-            else:
-                params["invoice_number"] = invoice_num
+            invoice_num = match.group(1).strip()
+            # Filter out common false positives like prepositions
+            if invoice_num.lower() not in ["from", "for", "by", "to", "with", "about"]:
+                # If it looks like a filename, keep it as is, otherwise uppercase it
+                if "." in invoice_num:
+                    params["invoice_number"] = invoice_num
+                else:
+                    params["invoice_number"] = invoice_num.upper()
 
         # Extract date mentions (simplified)
         # Look for patterns like "in December 2024", "this month", "last month", "2024-12"

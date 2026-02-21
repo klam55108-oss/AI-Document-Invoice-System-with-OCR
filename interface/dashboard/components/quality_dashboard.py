@@ -175,11 +175,16 @@ def _render_format_quality_chart(by_format: list):
     # Create grouped bar chart
     fig = go.Figure()
     
+    # Convert confidence scores to percentage for better visualization
+    df["avg_vendor_conf_pct"] = (df["avg_vendor_conf"] * 100).round(1)
+    df["avg_invoice_num_conf_pct"] = (df["avg_invoice_num_conf"] * 100).round(1)
+    df["avg_total_conf_pct"] = (df["avg_total_conf"] * 100).round(1)
+    
     fig.add_trace(go.Bar(
         name="Vendor Name",
         x=df["file_type"],
-        y=df["avg_vendor_conf"],
-        text=df["avg_vendor_conf"].round(2),
+        y=df["avg_vendor_conf_pct"],
+        text=[f"{val:.1f}%" for val in df["avg_vendor_conf_pct"]],
         textposition="auto",
         marker_color="rgb(55, 83, 109)"
     ))
@@ -187,8 +192,8 @@ def _render_format_quality_chart(by_format: list):
     fig.add_trace(go.Bar(
         name="Invoice Number",
         x=df["file_type"],
-        y=df["avg_invoice_num_conf"],
-        text=df["avg_invoice_num_conf"].round(2),
+        y=df["avg_invoice_num_conf_pct"],
+        text=[f"{val:.1f}%" for val in df["avg_invoice_num_conf_pct"]],
         textposition="auto",
         marker_color="rgb(26, 118, 255)"
     ))
@@ -196,8 +201,8 @@ def _render_format_quality_chart(by_format: list):
     fig.add_trace(go.Bar(
         name="Total Amount",
         x=df["file_type"],
-        y=df["avg_total_conf"],
-        text=df["avg_total_conf"].round(2),
+        y=df["avg_total_conf_pct"],
+        text=[f"{val:.1f}%" for val in df["avg_total_conf_pct"]],
         textposition="auto",
         marker_color="rgb(50, 171, 96)"
     ))
@@ -205,8 +210,8 @@ def _render_format_quality_chart(by_format: list):
     fig.update_layout(
         barmode="group",
         xaxis_title="File Type",
-        yaxis_title="Average Confidence Score",
-        yaxis_range=[0, 1],
+        yaxis_title="Average Confidence Score (%)",
+        yaxis_range=[0, 100],
         height=400,
         showlegend=True,
         legend=dict(
@@ -231,14 +236,19 @@ def _render_format_quality_chart(by_format: list):
             "avg_invoice_num_conf",
             "avg_total_conf"
         ]].copy()
+        # Convert confidence to percentage for display
+        display_df["avg_vendor_conf"] = (display_df["avg_vendor_conf"] * 100).round(1)
+        display_df["avg_invoice_num_conf"] = (display_df["avg_invoice_num_conf"] * 100).round(1)
+        display_df["avg_total_conf"] = (display_df["avg_total_conf"] * 100).round(1)
+        
         display_df.columns = [
             "File Type",
             "Total",
             "Vendor Extracted",
             "Completion %",
-            "Avg Vendor Conf",
-            "Avg Invoice# Conf",
-            "Avg Total Conf"
+            "Avg Vendor Conf %",
+            "Avg Invoice# Conf %",
+            "Avg Total Conf %"
         ]
         st.dataframe(display_df, width="stretch")
 
@@ -286,20 +296,23 @@ def _render_confidence_distribution_chart(by_format: list):
     
     # Show average confidence by format
     with st.expander("📈 Average confidence by format"):
+        # Convert to percentage for display
+        df["avg_confidence_pct"] = (df["avg_confidence"] * 100).round(1)
+        
         fig_bar = px.bar(
             df,
             x="file_type",
-            y="avg_confidence",
-            text="avg_confidence",
-            color="avg_confidence",
+            y="avg_confidence_pct",
+            text="avg_confidence_pct",
+            color="avg_confidence_pct",
             color_continuous_scale="RdYlGn",
-            range_color=[0, 1]
+            range_color=[0, 100]
         )
-        fig_bar.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+        fig_bar.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
         fig_bar.update_layout(
             xaxis_title="File Type",
-            yaxis_title="Average Confidence",
-            yaxis_range=[0, 1],
+            yaxis_title="Average Confidence (%)",
+            yaxis_range=[0, 100],
             showlegend=False
         )
         st.plotly_chart(fig_bar, width="stretch")
@@ -394,14 +407,14 @@ def _render_low_confidence_table(low_confidence: list):
     # Convert to dataframe
     df = pd.DataFrame(low_confidence)
     
-    # Format columns
+    # Format columns (convert confidence to percentage)
     display_df = pd.DataFrame({
         "Invoice ID": df["invoice_id"],
         "File Name": df["file_name"],
         "File Type": df["file_type"],
-        "Vendor Conf.": df["vendor_confidence"].apply(lambda x: f"{x:.2f}" if x is not None else "N/A"),
-        "Invoice# Conf.": df["invoice_num_confidence"].apply(lambda x: f"{x:.2f}" if x is not None else "N/A"),
-        "Total Conf.": df["total_confidence"].apply(lambda x: f"{x:.2f}" if x is not None else "N/A"),
+        "Vendor Conf.": df["vendor_confidence"].apply(lambda x: f"{x*100:.1f}%" if x is not None else "N/A"),
+        "Invoice# Conf.": df["invoice_num_confidence"].apply(lambda x: f"{x*100:.1f}%" if x is not None else "N/A"),
+        "Total Conf.": df["total_confidence"].apply(lambda x: f"{x*100:.1f}%" if x is not None else "N/A"),
         "Vendor Name": df["vendor_name"].apply(lambda x: x if x else "❌ Missing"),
         "Invoice Number": df["invoice_number"].apply(lambda x: x if x else "❌ Missing"),
         "Total Amount": df["total_amount"].apply(lambda x: f"${x:,.2f}" if x is not None else "❌ Missing"),

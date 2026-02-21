@@ -588,7 +588,8 @@ def display_invoice_list(
         status_display = f"{status_emoji.get(status_value.lower(), '')} {status_value.title()}"
         
         # Extraction confidence and validation summary
-        confidence = float(extracted.extraction_confidence) if extracted and extracted.extraction_confidence else 0.0
+        # Convert to percentage (0-100) for ProgressColumn display
+        confidence = float(extracted.extraction_confidence) * 100 if extracted and extracted.extraction_confidence else 0.0
         
         invoice_data.append({
             "ID_Full": str(invoice.id),
@@ -644,7 +645,7 @@ def display_invoice_list(
                 help="Extraction confidence score",
                 format="%.1f%%",
                 min_value=0,
-                max_value=1,
+                max_value=100,
             ),
             "Duration": st.column_config.TextColumn("Duration", width="small", help="Processing time"),
             "Created": st.column_config.TextColumn("Created", width="medium"),

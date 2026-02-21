@@ -98,6 +98,8 @@ class IngestionPipeline:
                 self.session.add(invoice)
 
                 # Create ExtractedData (backward compatibility & standard lookup)
+                # Set individual field confidences to annotation_confidence for pre-annotated data
+                field_confidence = record.annotation_confidence
                 extracted = ExtractedData(
                     id=uuid.uuid4(),
                     invoice_id=invoice_id,
@@ -109,7 +111,15 @@ class IngestionPipeline:
                     subtotal=record.subtotal,
                     currency=record.currency,
                     raw_text=record.raw_ocr_text,
-                    extraction_confidence=record.annotation_confidence
+                    extraction_confidence=field_confidence,
+                    # Set individual field confidences (pre-annotated data has high confidence)
+                    vendor_name_confidence=field_confidence if record.vendor_name else None,
+                    invoice_number_confidence=field_confidence if record.invoice_number else None,
+                    invoice_date_confidence=field_confidence if record.invoice_date else None,
+                    total_amount_confidence=field_confidence if record.total_amount else None,
+                    tax_amount_confidence=field_confidence if record.tax_amount else None,
+                    subtotal_confidence=field_confidence if record.subtotal else None,
+                    currency_confidence=field_confidence if record.currency else None,
                 )
                 self.session.add(extracted)
 

@@ -183,7 +183,24 @@ class ChatbotEngine:
             except ValueError:
                 pass
 
-        # 2. Check for filename/invoice_number in intent parameters
+        # 2. Check for vendor_name in intent parameters
+        if intent.parameters and "vendor_name" in intent.parameters:
+            vendor_name = intent.parameters["vendor_name"]
+            stmt = (
+                select(Invoice.id)
+                .join(ExtractedData, Invoice.id == ExtractedData.invoice_id)
+                .where(ExtractedData.vendor_name.ilike(f"%{vendor_name}%"))
+                .limit(settings.CHATBOT_MAX_RESULTS)
+            )
+            result = await self.session.execute(stmt)
+            db_ids = [row[0] for row in result.fetchall()]
+            if db_ids:
+                logger.info("Found invoices by vendor name from parameters", vendor_name=vendor_name, count=len(db_ids))
+                return db_ids
+            else:
+                logger.info("No invoices found for vendor name from parameters", vendor_name=vendor_name)
+
+        # 3. Check for filename/invoice_number in intent parameters
         if intent.parameters and "invoice_number" in intent.parameters:
             invoice_number = intent.parameters["invoice_number"]
             # If it's a specific filename like "invoice-14.png"
@@ -195,7 +212,7 @@ class ChatbotEngine:
                     logger.info("Found invoices by filename from parameters", invoice_number=invoice_number, count=len(db_ids))
                     return db_ids[: settings.CHATBOT_MAX_RESULTS]
 
-        # 3. For other queries, try vector search (semantic)
+        # 4. For other queries, try vector search (semantic)
         try:
             invoice_ids = await self.vector_retriever.search_similar(
                 query_text=query,
@@ -205,11 +222,11 @@ class ChatbotEngine:
         except Exception as e:
             logger.warning("Vector search failed, falling back to database query", error=str(e))
 
-        # 4. If vector search returned no results, try database query as fallback
+        # 5. If vector search returned no results, try database query as fallback
         if not invoice_ids:
             invoice_ids = await self._query_invoices_from_db(query, intent)
 
-        # 5. Apply additional filters from intent parameters for remaining results
+        # 6. Apply additional filters from intent parameters for remaining results
         if intent.parameters and invoice_ids:
             # Filter by invoice number if specified and NOT already handled by filename search
             if "invoice_number" in intent.parameters:

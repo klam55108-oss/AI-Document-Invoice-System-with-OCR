@@ -46,7 +46,17 @@ def resolve_file_path(
     data_path = Path(data_dir) if isinstance(data_dir, str) else data_dir
 
     # Try original location first
-    original_resolved = data_path / file_path
+    # Handle both relative paths (hf_datasets/...) and paths with data/ prefix (data/hf_datasets/...)
+    file_path_obj = Path(file_path)
+    
+    # If file_path starts with data/, strip it to avoid data/data/ duplication
+    if file_path_obj.parts and file_path_obj.parts[0] == "data":
+        # Strip the leading "data" part
+        relative_path = Path(*file_path_obj.parts[1:])
+        original_resolved = data_path / relative_path
+    else:
+        original_resolved = data_path / file_path
+    
     if original_resolved.exists() and original_resolved.is_file():
         return ResolvedFileInfo(
             original_path=file_path,
